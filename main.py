@@ -6,11 +6,12 @@ import textwrap
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import pandas as pd
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request, UploadFile, File, Form, Depends, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -37,13 +38,15 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 from openai import OpenAI
-from dotenv import load_dotenv
+
+# -------------------------------------------------------------------
+# Ortam değişkenleri / yollar
+# -------------------------------------------------------------------
 
 load_dotenv()
 
 OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or "").strip()
 client: Optional[OpenAI] = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
-
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
@@ -62,9 +65,6 @@ try:
 except Exception:
     PDF_FONT = "Helvetica"
 
-# OpenAI client (API key yoksa None)
-client: Optional[OpenAI] = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
-
 # -------------------------------------------------------------------
 # Veritabanı
 # -------------------------------------------------------------------
@@ -82,13 +82,12 @@ Base = declarative_base()
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
-    # Temel giriş bilgileri
+
     email = Column(String, unique=True, index=True, nullable=False)
-    password = Column(String, nullable=False)  # Demo: düz şifre, prod için hash önerilir
+    password = Column(String, nullable=False)  # DEMO: prod’da hash kullan
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # Profil / iletişim bilgileri
     full_name = Column(String, nullable=True)
     phone = Column(String, nullable=True)
     company = Column(String, nullable=True)
@@ -106,7 +105,6 @@ class Upload(Base):
     file_type = Column(String, nullable=False)
     company = Column(String, nullable=True)
 
-    # İletişim bilgileri (login yok, sadece upload anında alınır)
     contact_name = Column(String, nullable=True)
     contact_phone = Column(String, nullable=True)
     contact_email = Column(String, nullable=True)
@@ -148,7 +146,7 @@ ANALYSIS_CACHE: Dict[int, Dict[str, Any]] = {}
 
 
 # -------------------------------------------------------------------
-# DB dependency & yardımcılar
+# DB helper’lar
 # -------------------------------------------------------------------
 
 def get_db():
@@ -167,7 +165,7 @@ def current_user(request: Request, db: OrmSession) -> Optional[User]:
 
 
 # -------------------------------------------------------------------
-# AI analizi (OpenAI SDK + JSON)
+# AI analizi
 # -------------------------------------------------------------------
 
 AI_SYSTEM_PROMPT = """
@@ -177,9 +175,9 @@ Tüm analizleri profesyonel, sade ve yöneticilere uygun Türkçe ile yaparsın.
 Kullanıcıdan veri setine ait özet bilgiler alacaksın.
 Bu bilgiler: satır/kolon sayıları, eksik veri oranı, varyans, alan tipleri, sektör vb. olabilir.
 
-Sana yüklediğim veri setlerinde ilgili verileri analiz et. Analizini yaparken seçilen sektör dinamiklerine göre yorumlar yap. 
-(sağladığım datanın kalitesinden ziyade veriyi anlamlandır.) Bana vereceğin bilgiler ışığında ben firmalara çözüm önerileri sunmak istiyorum. 
-“Uygulanabilir Model Önerileri” kısmında firma verilerin analizi sonucu hangi önerini yaparsa karlılık ve verimlilik arttırır bunu dikkate alacak.” 
+Sana yüklediğim veri setlerinde ilgili verileri analiz et. Analizini yaparken seçilen sektör dinamiklerine göre yorumlar yap.
+(sağladığım datanın kalitesinden ziyade veriyi anlamlandır.) Bana vereceğin bilgiler ışığında ben firmalara çözüm önerileri sunmak istiyorum.
+“Uygulanabilir Model Önerileri” kısmında firma verilerin analizi sonucu hangi önerini yaparsa karlılık ve verimlilik arttırır bunu dikkate alacak.
 “İş / Veri Geliştirme Önerileri” kısmında da verdiğin bilgiler ışığında firma kendisine yol haritası çizecek.
 
 ⛔ Kurallar:
@@ -188,7 +186,7 @@ Sana yüklediğim veri setlerinde ilgili verileri analiz et. Analizini yaparken 
 - JSON dışında TEK BİR KARAKTER BİLE yazma.
 - Değerler TÜRKÇE olacak, key isimleri İNGİLİZCE kalacak.
 
-🎯 Üreteceğin JSON şeması:
+🎯 JSON şeması:
 
 {
   "summary": "<genel kısa özet>",
@@ -204,7 +202,6 @@ yorumları sektöre uygunlaştır.
 
 
 def _join_list_or_str(value: Any) -> str:
-    """LLM'den gelen liste/string değerleri her zaman stringe çevirir."""
     if value is None:
         return ""
     if isinstance(value, list):
@@ -213,10 +210,6 @@ def _join_list_or_str(value: Any) -> str:
 
 
 def ai_analyze_dataframe(df: pd.DataFrame, sector: Optional[str] = None) -> Dict[str, str]:
-    """
-    Veri seti için sektör bağımsız, yapısal AI analizi.
-    Dönen değerler: summary/risks/features/ml_models/recommendations -> hepsi string.
-    """
     rows, cols = df.shape
     missing_total = int(df.isna().sum().sum())
     total_cells = max(rows * cols, 1)
@@ -225,7 +218,6 @@ def ai_analyze_dataframe(df: pd.DataFrame, sector: Optional[str] = None) -> Dict
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     cat_cols = df.select_dtypes(include=["object", "category", "bool"]).columns.tolist()
 
-    # En yüksek varyanslı ilk 5 kolon
     high_var: List[str] = []
     if numeric_cols:
         var_series = df[numeric_cols].var(numeric_only=True).sort_values(ascending=False)
@@ -243,7 +235,7 @@ Dosya Özeti:
 - En yüksek varyansa sahip alanlar: {', '.join(high_var) if high_var else '-'}
 """.strip()
 
-    # API anahtarı yoksa demo cevap
+    # API yoksa demo cevap
     if not client:
         risks_list = [
             "Gerçek zamanlı AI analizi devre dışı (API anahtarı tanımsız).",
@@ -304,32 +296,38 @@ Dosya Özeti:
 
 
 # -------------------------------------------------------------------
-# AI destekli grafik üretimi
+# Dosya ismi sanitizasyonu
+# -------------------------------------------------------------------
+
+def safe_filename_part(value: str, max_len: int = 80) -> str:
+    r"""
+    Kolon adı, chart_id vb. değerleri dosya adı için güvenli hale getirir.
+    /, \, boşluk ve Türkçe karakterleri alt çizgiye çevirir.
+    Sadece [A-Za-z0-9_.-] karakterleri bırakılır.
+    """
+    s = str(value)
+    s = s.replace(os.sep, "_")
+    s = s.replace(" ", "_")
+    s = re.sub(r"[^A-Za-z0-9_.-]", "_", s)
+    return s[:max_len] or "col"
+
+
+# -------------------------------------------------------------------
+# AI destekli grafik önerisi
 # -------------------------------------------------------------------
 
 def suggest_charts_with_ai(df: pd.DataFrame, max_charts: int = 6) -> List[Dict[str, Any]]:
-    """
-    DataFrame yapısına bakarak OpenAI'den grafik önerileri ister.
-    Tipler: "hist", "bar", "line", "pie", "box", "heatmap"
-    """
-    # API key yoksa grafik önerme
     if not client:
         return []
 
-    # Şema özeti
     schema_info: List[Dict[str, Any]] = []
     for col in df.columns:
         dtype = str(df[col].dtype)
         nunique = int(df[col].nunique())
         schema_info.append(
-            {
-                "name": col,
-                "dtype": dtype,
-                "nunique": nunique,
-            }
+            {"name": col, "dtype": dtype, "nunique": nunique}
         )
 
-    # Sayısal özet
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     numeric_summary: Dict[str, Any] = {}
     if numeric_cols:
@@ -347,11 +345,11 @@ def suggest_charts_with_ai(df: pd.DataFrame, max_charts: int = 6) -> List[Dict[s
     system_prompt = """
 Sen bir veri görselleştirme asistanısın. Görevin:
 - Verilen tablo şemasına (kolon adları, veri tipleri, özet istatistikler) bakarak
-- En fazla N adet (max_charts) anlamlı grafik önerisi yapmak.
+- En fazla N adet anlamlı grafik önerisi yapmak.
 - Sadece şu tipleri kullan: "hist", "bar", "line", "pie", "box", "heatmap".
 - Çıktıyı KESİNLİKLE saf JSON liste olarak ver. Başına/sonuna açıklama ekleme.
 
-Her grafik için zorunlu alanlar:
+Her grafik için:
 - "id": Benzersiz bir id (ör: "chart_1")
 - "type": "hist" | "bar" | "line" | "pie" | "box" | "heatmap"
 - "columns": Kullandığın kolon(lar) listesi
@@ -408,15 +406,7 @@ Her grafik için zorunlu alanlar:
     return cleaned
 
 
-def render_chart_from_spec(
-    df: pd.DataFrame,
-    upload_id: int,
-    spec: Dict[str, Any],
-) -> Optional[str]:
-    """
-    AI'den gelen grafik tanımını kullanarak PNG üretir.
-    Dönüş: /static/charts/... şeklinde URL (veya None).
-    """
+def render_chart_from_spec(df: pd.DataFrame, upload_id: int, spec: Dict[str, Any]) -> Optional[str]:
     chart_type = spec["type"]
     cols = spec["columns"]
     title = spec.get("title") or "Grafik"
@@ -516,7 +506,6 @@ def render_chart_from_spec(
 
         safe_id = safe_filename_part(chart_id)
         filename = f"{upload_id}_{safe_id}_{chart_type}.png"
-
         filepath = os.path.join(CHART_DIR, filename)
         plt.savefig(filepath)
         plt.close()
@@ -527,38 +516,18 @@ def render_chart_from_spec(
         plt.close()
         return None
 
-def safe_filename_part(value: str, max_len: int = 80) -> str:
-    """
-    Kolon adı, chart_id gibi değerleri dosya adı parçası olarak güvenli hale getirir.
-    - /, \, boşluk, Türkçe karakter vs. hepsi alt çizgiye döner.
-    - Sadece [A-Za-z0-9_.-] kalır.
-    """
-    s = str(value)
-    s = s.replace(os.sep, "_")
-    s = s.replace(" ", "_")
-    # Türkçe karakterler vs. için kaba temizlik
-    s = re.sub(r"[^A-Za-z0-9_.-]", "_", s)
-    return s[:max_len] or "col"
-
 
 def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
-    """
-    AI destekli grafik üretimi.
-    - OpenAI'den farklı tiplerde grafik şablonları istenir.
-    - Gelen şablonlara göre grafikler çizilir.
-    - Hiç grafik üretilemezse eski davranışa (histogram + trend) düşer.
-    """
     chart_cards: List[Dict[str, Any]] = []
     hist_paths: List[str] = []
     trend_url: Optional[str] = None
 
-    # 1) AI'den grafik önerilerini al
+    # 1) AI önerileri
     try:
         specs = suggest_charts_with_ai(df, max_charts=6)
     except Exception:
         specs = []
 
-    # 2) AI önerilerine göre grafik çiz
     if specs:
         for spec in specs:
             url = render_chart_from_spec(df, upload_id, spec)
@@ -573,11 +542,14 @@ def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
             chart_cards.append(card)
             hist_paths.append(url)
 
-    # 3) Hiç grafik oluşmadıysa fallback
+    # 2) Hiç grafik yoksa fallback
     if not chart_cards:
         numeric_cols = df.select_dtypes(include="number").columns.tolist()
 
+        # Histogramlar
         for col in numeric_cols:
+            safe_col = safe_filename_part(col)
+
             plt.figure()
             df[col].dropna().hist(bins=30)
             plt.title(f"{col} - Dağılım")
@@ -585,33 +557,34 @@ def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
             plt.ylabel("Frekans")
             plt.tight_layout()
 
-            safe_col = safe_filename_part(col)
             filename = f"{upload_id}_hist_{safe_col}.png"
             filepath = os.path.join(CHART_DIR, filename)
-
+            plt.savefig(filepath)
             plt.close()
 
             url = f"/static/charts/{filename}"
             hist_paths.append(url)
             chart_cards.append({"title": f"{col} – Dağılım", "url": url})
 
+        # Trend
         if numeric_cols:
-            col = numeric_cols[0]
+            first_col = numeric_cols[0]
+            safe_first = safe_filename_part(first_col)
+
             plt.figure()
-            df[col].reset_index(drop=True).plot()
-            plt.title(f"{col} - Trend")
+            df[first_col].reset_index(drop=True).plot()
+            plt.title(f"{first_col} - Trend")
             plt.xlabel("Index")
-            plt.ylabel(col)
+            plt.ylabel(first_col)
             plt.tight_layout()
 
-           safe_col = safe_filename_part(col)
-           filename = f"{upload_id}_trend_{safe_col}.png"
-           filepath = os.path.join(CHART_DIR, filename)
-
+            filename = f"{upload_id}_trend_{safe_first}.png"
+            filepath = os.path.join(CHART_DIR, filename)
+            plt.savefig(filepath)
             plt.close()
 
             trend_url = f"/static/charts/{filename}"
-            chart_cards.append({"title": f"{col} – Trend", "url": trend_url})
+            chart_cards.append({"title": f"{first_col} – Trend", "url": trend_url})
 
     return {
         "charts": chart_cards,
@@ -621,11 +594,6 @@ def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
 
 
 def build_chart_cards(charts: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    Template'te kullanılacak kart yapısını üretir.
-    - Yeni "charts" yapısını direkt kullanır.
-    - Yoksa eski "histograms + trend" mantığına döner.
-    """
     cards: List[Dict[str, Any]] = []
     if not charts:
         return cards
@@ -678,9 +646,6 @@ def generate_pdf_report(
     chart_files: Optional[List[str]] = None,
     meta: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """
-    Daha düzenli, UX/UI odaklı PDF rapor üretir.
-    """
     c = canvas.Canvas(output_path, pagesize=A4)
     width, height = A4
     margin = 2 * cm
@@ -731,7 +696,7 @@ def generate_pdf_report(
 
     y -= 1.2 * cm
 
-    # Müşteri / firma kutusu
+    # Firma kutusu
     if meta:
         c.setFont(PDF_FONT, 11)
         box_top = y
@@ -1182,9 +1147,6 @@ def admin_global(request: Request, db: OrmSession = Depends(get_db)):
 
 @app.get("/download_pdf/{upload_id}")
 def download_pdf(upload_id: int, db: OrmSession = Depends(get_db)):
-    """
-    ANALYSIS_CACHE veya DB'deki AI sonuçlarını ve grafik dosyalarını kullanarak PDF raporu indir.
-    """
     upload = db.query(Upload).filter(Upload.id == upload_id).first()
     if not upload:
         raise HTTPException(status_code=404, detail="Rapor bulunamadı.")
@@ -1222,7 +1184,7 @@ def download_pdf(upload_id: int, db: OrmSession = Depends(get_db)):
 
     pdf_path = os.path.join(REPORT_DIR, f"rapor_{upload_id}.pdf")
 
-    meta: Optional[Dict[str, Any]] = {
+    meta: Dict[str, Any] = {
         "company": upload.company or "",
         "contact_name": upload.contact_name or "",
         "contact_email": upload.contact_email or "",
