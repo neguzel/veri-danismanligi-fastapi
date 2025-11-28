@@ -38,13 +38,11 @@ from reportlab.pdfbase.ttfonts import TTFont
 from openai import OpenAI
 from dotenv import load_dotenv
 
-# -------------------------------------------------------------------
-# Ortam değişkenleri / yollar
-# -------------------------------------------------------------------
-
 load_dotenv()
 
 OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or "").strip()
+client: Optional[OpenAI] = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
