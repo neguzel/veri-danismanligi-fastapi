@@ -1,20 +1,12 @@
 fastapi
 uvicorn[standard]
-
-jinja2
-python-multipart
-aiofiles
-requests
-
 sqlalchemy
 pandas
-matplotlib
-reportlab
-
+openpyxl
+python-multipart
+jinja2
+python-dotenv
 openai
+reportlab
+matplotlib
 
-passlib[bcrypt]
-python-jose
-python-dateutil
-
-itsdangerous
