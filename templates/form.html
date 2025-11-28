@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Veri Yükle – Veri Danışmanlığı{% endblock %}
+
+{% block page_title %}Veri Yükle{% endblock %}
+{% block page_subtitle %}CSV verilerinizi yükleyerek otomatik veri kalitesi analizi ve grafik üretimi başlatın.{% endblock %}
+
+{% block content %}
+
+<div class="vd-card">
+  <div class="vd-card-body">
+    <form action="/upload" method="post" enctype="multipart/form-data" class="vd-form">
+      <div class="vd-form-group">
+        <label for="company_name">Firma Adı (Opsiyonel)</label>
+        <input type="text" id="company_name" name="company_name"
+               value="{{ company_name or '' }}" placeholder="Örn: Üretim A.Ş.">
+      </div>
+
+      <div class="vd-form-group">
+        <label for="domain">Sektör / Alan (Opsiyonel)</label>
+        <input type="text" id="domain" name="domain"
+               value="{{ domain or '' }}" placeholder="Örn: Enerji, Lojistik, Üretim">
+      </div>
+
+      <div class="vd-form-group">
+        <label for="file">CSV Dosyası</label>
+        <input type="file" id="file" name="file" accept=".csv" required>
+      </div>
+
+      {% if error %}
+      <div class="vd-alert vd-alert-error">
+        {{ error }}
+      </div>
+      {% endif %}
+
+      <button type="submit" class="vd-btn vd-btn-primary">Yükle ve Analiz Et</button>
+    </form>
+  </div>
+</div>
+
+{% if last_analysis %}
+<div class="vd-section">
+  <h2 class="vd-section-title">Son Analiz Özeti</h2>
+  <div class="vd-grid-3">
+    <div class="vd-card">
+      <div class="vd-kpi-label">Veri Kalite Skoru</div>
+      <div class="vd-kpi-value">{{ last_analysis.quality_score }}%</div>
+    </div>
+    <div class="vd-card">
+      <div class="vd-kpi-label">Satır / Kolon</div>
+      <div class="vd-kpi-value">{{ last_analysis.total_rows }} / {{ last_analysis.total_columns }}</div>
+    </div>
+    <div class="vd-card">
+      <div class="vd-kpi-label">Eksik Hücre</div>
+      <div class="vd-kpi-value">{{ last_analysis.total_missing }}</div>
+    </div>
+  </div>
+  <a href="/dashboard" class="vd-link">Detaylı dashboard'u aç →</a>
+</div>
+{% endif %}
+
+{% endblock %}

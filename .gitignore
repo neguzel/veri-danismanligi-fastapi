@@ -1,0 +1,35 @@
+# --- Environment variables ---
+.env
+*.env
+
+# --- Python cache ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+
+# --- Virtual environment ---
+venv/
+.venv/
+
+# --- Databases ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Logs ---
+*.log
+
+# --- OS generated files ---
+.DS_Store
+Thumbs.db
+
+# --- IDE files ---
+.vscode/
+.idea/
+
+# --- Python build ---
+build/
+dist/
+*.egg-info/

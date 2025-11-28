@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Yönetici Girişi – Veri Danışmanlığı{% endblock %}
+
+{% block page_title %}Yönetici Girişi{% endblock %}
+{% block page_subtitle %}Yalnızca yönetici hesabı ile erişilebilen panel.{% endblock %}
+
+{% block content %}
+
+<div class="vd-auth-wrapper">
+  <div class="vd-card vd-auth-card">
+    <div class="vd-card-body">
+      {% if error %}<div class="vd-alert vd-alert-error">{{ error }}</div>{% endif %}
+      <form action="{{ request.url.path }}" method="post" class="vd-form">
+        <div class="vd-form-group">
+          <label for="email">Yönetici E-posta</label>
+          <input type="email" id="email" name="email" required>
+        </div>
+        <div class="vd-form-group">
+          <label for="password">Şifre</label>
+          <input type="password" id="password" name="password" required>
+        </div>
+        <button type="submit" class="vd-btn vd-btn-primary">Giriş Yap</button>
+      </form>
+      <p class="vd-auth-switch">
+        Standart kullanıcı mısınız? <a href="/login" class="vd-link">Kullanıcı girişi</a>
+      </p>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

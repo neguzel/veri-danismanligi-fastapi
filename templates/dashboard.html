@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – Veri Danışmanlığı{% endblock %}
+
+{% block page_title %}Dashboard{% endblock %}
+{% block page_subtitle %}Son analiz edilen veri setleri için KPI'lar, grafikler ve AI özetleri.{% endblock %}
+
+{% block content %}
+
+{% if data.ai_summary %}
+<div class="vd-card">
+  <div class="vd-card-body">
+    <h3>AI Değerlendirme Özeti</h3>
+    <p>{{ data.ai_summary }}</p>
+  </div>
+</div>
+{% endif %}
+
+{% if not data %}
+<div class="vd-card">
+  <div class="vd-card-body">
+    Henüz analiz edilmiş bir veri bulunmuyor. Önce <a href="/upload" class="vd-link">CSV yükleyin</a>.
+  </div>
+</div>
+{% else %}
+<div class="vd-grid-3 vd-kpi-row">
+  <div class="vd-card vd-card-kpi">
+    <div class="vd-kpi-label">Veri Kalite Skoru</div>
+    <div class="vd-kpi-value">{{ data.quality_score }}%</div>
+  </div>
+  <div class="vd-card vd-card-kpi">
+    <div class="vd-kpi-label">Satır / Kolon</div>
+    <div class="vd-kpi-value">{{ data.total_rows }} / {{ data.total_columns }}</div>
+  </div>
+  <div class="vd-card vd-card-kpi">
+    <div class="vd-kpi-label">Toplam Eksik Hücre</div>
+    <div class="vd-kpi-value">{{ data.total_missing }}</div>
+  </div>
+</div>
+
+<div class="vd-section">
+  <h2 class="vd-section-title">Grafikler</h2>
+  <div class="vd-grid-3">
+    {% for chart in charts %}
+  <div class="vd-card vd-card-chart">
+    <div class="vd-card-header">
+      <h3>{{ chart.title }}</h3>
+    </div>
+    <div class="vd-card-body">
+      <img src="{{ chart.url }}" alt="{{ chart.title }}" class="vd-chart-img">
+    </div>
+  </div>
+{% endfor %}
+  </div>
+</div>
+
+<div class="vd-section">
+  <h2 class="vd-section-title">AI Özet Görünümü</h2>
+  <div class="vd-card">
+    <div class="vd-card-body">
+      <p><strong>Genel Yorum:</strong></p>
+      <p>{{ data.ai_summary or "AI ile özet henüz oluşturulmadı." }}</p>
+      <hr class="vd-divider">
+      <p><strong>Detaylı Notlar:</strong></p>
+      <p>{{ data.ai_details or "-" }}</p>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Admin Paneli – Veri Danışmanlığı{% endblock %}
+
+{% block page_title %}Admin Paneli{% endblock %}
+{% block page_subtitle %}
+Yüklenen tüm veri setlerini ve müşteri iletişim bilgilerini yönetin.
+{% endblock %}
+
+{% block content %}
+
+<!-- Üst KPI'lar -->
+<div class="vd-section vd-section-kpi">
+  <div class="vd-kpi-row">
+    <div class="vd-card vd-card-kpi vd-card-accent">
+      <div class="vd-card-header">
+        <div class="vd-card-icon">📥</div>
+        <h3>Toplam Yükleme</h3>
+      </div>
+      <div class="vd-card-body">
+        <div class="vd-kpi-value-lg">{{ total_uploads }}</div>
+        <div class="vd-kpi-caption">Sistem genelinde yapılan tüm veri yüklemeleri.</div>
+      </div>
+    </div>
+
+    <div class="vd-card vd-card-kpi">
+      <div class="vd-card-header">
+        <div class="vd-card-icon">👤</div>
+        <h3>Admin Kullanıcı Sayısı</h3>
+      </div>
+      <div class="vd-card-body">
+        <div class="vd-kpi-value">
+          {{ total_users }}
+        </div>
+        <div class="vd-kpi-caption">Sistemde tanımlı yönetici / kullanıcı sayısı.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Son Yüklemeler -->
+<div class="vd-section">
+  <h2 class="vd-section-title">Son Yüklemeler</h2>
+  <div class="vd-card">
+    <div class="vd-card-body">
+      {% if not last_uploads %}
+        <p>Henüz hiçbir veri yüklemesi yapılmamış.</p>
+      {% else %}
+        <div class="vd-table-wrapper">
+          <table class="vd-table">
+            <thead>
+              <tr>
+                <th>Tarih</th>
+                <th>Firma</th>
+                <th>Ad Soyad</th>
+                <th>Sektör</th>
+                <th>E-posta</th>
+                <th>Telefon</th>
+                <th>Dosya</th>
+                <th>Satır / Kolon</th>
+                <th>Kalite Skoru</th>
+                <th>Rapor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in last_uploads %}
+                <tr>
+                  <td>{{ u.created_at.strftime("%Y-%m-%d %H:%M") if u.created_at else "-" }}</td>
+                  <td>{{ u.company or "-" }}</td>
+                  <td>{{ u.contact_name or "-" }}</td>
+                  <td>{{ u.contact_sector or "-" }}</td>
+                  <td>
+                    {% if u.contact_email %}
+                      <a href="mailto:{{ u.contact_email }}" class="vd-link">{{ u.contact_email }}</a>
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if u.contact_phone %}
+                      <a href="tel:{{ u.contact_phone }}" class="vd-link">{{ u.contact_phone }}</a>
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                  <td>{{ u.file_name }}</td>
+                  <td>{{ u.row_count }} / {{ u.col_count }}</td>
+                  <td>{{ (u.quality_score or 0)|round(1) }}%</td>
+                  <td>
+                    <a href="/download_pdf/{{ u.id }}" class="vd-btn vd-btn-ghost vd-btn-xs" target="_blank">
+                      📄 PDF
+                    </a>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}

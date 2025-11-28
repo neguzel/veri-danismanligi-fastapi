@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>{% block title %}Veri Danışmanlığı – Veri Kalite Paneli{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/css/main.css">
+  <link rel="icon" type="image/png" href="/static/logo/favicon.png">
+</head>
+<body class="vd-body">
+  <div class="vd-shell">
+    <aside class="vd-sidebar">
+      <div class="vd-logo">
+        <div class="vd-logo-mark">VD</div>
+        <div class="vd-logo-text">
+          <div class="vd-logo-title">Veri Danışmanlığı</div>
+          <div class="vd-logo-sub">Akıllı Veri Analiz Paneli</div>
+        </div>
+      </div>
+      <a href="/reports" class="vd-nav-item">
+    <span class="vd-nav-icon">🧾</span><span class="vd-nav-label">Raporlar</span>
+  </a>
+
+  {% if user and user.is_admin %}
+  <a href="/admin" class="vd-nav-item">
+    <span class="vd-nav-icon">🛡️</span><span class="vd-nav-label">Admin</span>
+  </a>
+  {% endif %}
+      <div class="vd-sidebar-footer">
+        <span class="vd-badge">v1.0</span>
+      </div>
+    </aside>
+
+    <div class="vd-main">
+      <header class="vd-topbar">
+        <div class="vd-topbar-left">
+          <h1 class="vd-page-title">{% block page_title %}{% endblock %}</h1>
+          <p class="vd-page-subtitle">{% block page_subtitle %}{% endblock %}</p>
+        </div>
+      </header>
+
+      <main class="vd-content">
+        {% block content %}{% endblock %}
+      </main>
+
+      <footer class="vd-footer">
+        © 2025 Veri Danışmanlığı – Akıllı Veri Analiz ve Raporlama Platformu
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

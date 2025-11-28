@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Raporlar – Veri Danışmanlığı{% endblock %}
+
+{% block page_title %}Raporlar{% endblock %}
+{% block page_subtitle %}Geçmiş veri yüklemeleri ve PDF raporlarına buradan ulaşabilirsiniz.{% endblock %}
+
+{% block content %}
+
+{% if uploads|length == 0 %}
+  <div class="vd-card">
+    <div class="vd-card-body">
+      <p>Henüz herhangi bir veri yüklemesi yapılmamış.</p>
+      <a href="/upload" class="vd-link">İlk veri setinizi yüklemek için tıklayın →</a>
+    </div>
+  </div>
+{% else %}
+
+  <div class="vd-card">
+    <div class="vd-card-body">
+      <table class="vd-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Firma</th>
+            <th>Dosya Adı</th>
+            <th>Oluşturma Tarihi</th>
+            <th>Satır / Kolon</th>
+            <th>PDF</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in uploads %}
+          <tr>
+            <td>{{ u.id }}</td>
+            <td>{{ u.company or "-" }}</td>
+            <td>{{ u.file_name }}</td>
+            <td>{{ u.created_at.strftime("%Y-%m-%d %H:%M") if u.created_at else "-" }}</td>
+            <td>{{ u.row_count }} / {{ u.col_count }}</td>
+            <td>
+              <a href="/download_pdf/{{ u.id }}" class="vd-link">📄 İndir</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+{% endif %}
+
+{% endblock %}
