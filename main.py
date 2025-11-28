@@ -10,6 +10,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
+# Daha modern bir görünüm için global stil
+plt.style.use("ggplot")
+
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, UploadFile, File, Form, Depends, HTTPException
@@ -36,6 +39,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.units import cm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib import colors
 
 from openai import OpenAI
 
@@ -645,28 +649,62 @@ def generate_pdf_report(
     recommendations: str,
     chart_files: Optional[List[str]] = None,
     meta: Optional[Dict[str, Any]] = None,
+    metrics: Optional[Dict[str, Any]] = None,
 ) -> None:
+    """
+    Daha düzenli, UX/UI odaklı PDF rapor üretir.
+
+    Sayfa 1:
+      - Üstte koyu başlık barı
+      - Firma / müşteri kutusu
+      - Veri kalite özeti kutusu
+      - AI Özet, Riskler, Feature Engineering, Modeller, Aksiyonlar
+
+    Sonraki sayfalar:
+      - 'Grafikler' başlığı
+      - Her sayfada 1–2 grafik
+    """
+
     c = canvas.Canvas(output_path, pagesize=A4)
     width, height = A4
     margin = 2 * cm
+    metrics = metrics or {}
+
+    # ----------------- Yardımcı fonksiyonlar -----------------
 
     def new_page_header(title: str) -> float:
+        """Yeni sayfa + üst başlık barı."""
         c.showPage()
+        # üst bar
+        bar_h = 2.0 * cm
+        c.setFillColor(colors.HexColor("#020617"))
+        c.rect(0, height - bar_h, width, bar_h, stroke=0, fill=1)
+
+        c.setFillColor(colors.white)
         c.setFont(PDF_FONT, 16)
-        y_ = height - margin
-        c.drawString(margin, y_, title)
-        return y_ - 1.2 * cm
+        c.drawString(margin, height - 1.3 * cm, title)
+
+        c.setFont(PDF_FONT, 8)
+        created_text = f"Oluşturulma: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} (UTC)"
+        c.drawRightString(width - margin, height - 1.1 * cm, created_text)
+
+        c.setFillColor(colors.black)
+        return height - bar_h - 1.0 * cm
 
     def draw_section_title(txt: str, y_: float) -> float:
         if y_ < 3 * cm:
-            y_ = new_page_header("Veri Analiz Raporu")
+            y_ = new_page_header("Veri Analiz Raporu (devam)")
         c.setFont(PDF_FONT, 12)
+        c.setFillColor(colors.HexColor("#111827"))
         c.drawString(margin, y_, txt)
-        c.setLineWidth(0.3)
+        c.setLineWidth(0.6)
+        c.setStrokeColor(colors.HexColor("#9CA3AF"))
         c.line(margin, y_ - 0.15 * cm, width - margin, y_ - 0.15 * cm)
-        return y_ - 0.6 * cm
+        c.setFillColor(colors.black)
+        return y_ - 0.7 * cm
 
     def draw_paragraph(text: str, y_: float, font_size: int = 10) -> float:
+        """Basit paragraf + sayfa devamı."""
         if not text:
             return y_
         c.setFont(PDF_FONT, font_size)
@@ -680,32 +718,51 @@ def generate_pdf_report(
             for wline in wrapped:
                 if y_ < 2.5 * cm:
                     y_ = new_page_header("Veri Analiz Raporu (devam)")
+                    c.setFont(PDF_FONT, font_size)
                 c.drawString(margin, y_, wline)
                 y_ -= 0.45 * cm
         y_ -= 0.3 * cm
         return y_
 
-    # Başlık + tarih
+    # ----------------- SAYFA 1: Kapak + içerik -----------------
+
+    # Üst başlık barı
+    bar_h = 2.0 * cm
+    c.setFillColor(colors.HexColor("#020617"))
+    c.rect(0, height - bar_h, width, bar_h, stroke=0, fill=1)
+
+    c.setFillColor(colors.white)
     c.setFont(PDF_FONT, 18)
-    y = height - margin
-    c.drawString(margin, y, "Veri Analiz Raporu")
+    c.drawString(margin, height - 1.4 * cm, "Veri Analiz Raporu")
 
     c.setFont(PDF_FONT, 9)
-    created_text = f"Oluşturulma Tarihi: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} (UTC)"
-    c.drawRightString(width - margin, y, created_text)
+    created_text = f"Oluşturulma: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} (UTC)"
+    c.drawRightString(width - margin, height - 1.2 * cm, created_text)
 
-    y -= 1.2 * cm
+    c.setFillColor(colors.black)
+    y = height - bar_h - 1.0 * cm
 
-    # Firma kutusu
+    # Firma bilgileri kutusu
     if meta:
         c.setFont(PDF_FONT, 11)
         box_top = y
         box_bottom = y - 3.2 * cm
         if box_bottom < 2 * cm:
             box_bottom = 2 * cm
-        c.setLineWidth(0.6)
-        c.rect(margin, box_bottom, width - 2 * margin, box_top - box_bottom, stroke=1, fill=0)
 
+        c.setLineWidth(0.8)
+        c.setStrokeColor(colors.HexColor("#4B5563"))
+        c.setFillColor(colors.HexColor("#F9FAFB"))
+        c.rect(
+            margin,
+            box_bottom,
+            width - 2 * margin,
+            box_top - box_bottom,
+            stroke=1,
+            fill=1,
+        )
+
+        c.setFillColor(colors.black)
         y_line = box_top - 0.8 * cm
 
         def meta_line(label: str, key: str):
@@ -724,8 +781,45 @@ def generate_pdf_report(
 
         y = box_bottom - 0.8 * cm
     else:
-        y -= 0.4 * cm
+        y -= 0.5 * cm
 
+    # Veri Kalite Özeti kutusu
+    quality_title = "Veri Kalite Özeti"
+    y = draw_section_title(quality_title, y)
+
+    # Küçük kart tarzı görünüm
+    c.setFont(PDF_FONT, 10)
+    c.setFillColor(colors.HexColor("#111827"))
+
+    row_count = metrics.get("row_count", "-")
+    col_count = metrics.get("col_count", "-")
+    total_cells = metrics.get("total_cells", "-")
+    total_missing = metrics.get("total_missing", "-")
+    quality_score = metrics.get("quality_score", "-")
+    top_missing_col = metrics.get("top_missing_col", "-")
+    top_var_col = metrics.get("top_var_col", "-")
+
+    lines = [
+        f"Satır / Kolon        : {row_count} / {col_count}",
+        f"Toplam Hücre         : {total_cells}",
+        f"Eksik Hücre          : {total_missing}",
+        f"Veri Kalite Skoru    : {quality_score}%",
+        f"En Çok Eksik Alan    : {top_missing_col}",
+        f"En Yüksek Varyans    : {top_var_col}",
+    ]
+
+    for ln in lines:
+        if y < 2.5 * cm:
+            y = new_page_header("Veri Analiz Raporu (devam)")
+            y = draw_section_title(quality_title, y)
+            c.setFont(PDF_FONT, 10)
+        c.drawString(margin + 0.2 * cm, y, ln)
+        y -= 0.5 * cm
+
+    y -= 0.4 * cm
+    c.setFillColor(colors.black)
+
+    # AI metin blokları
     sections = [
         ("AI Özet", summary),
         ("Riskler", risks),
@@ -739,7 +833,7 @@ def generate_pdf_report(
             y = draw_section_title(title, y)
             y = draw_paragraph(text, y)
 
-    # Grafikler
+    # ----------------- GRAFİKLER -----------------
     if chart_files:
         y = new_page_header("Grafikler")
         c.setFont(PDF_FONT, 10)
@@ -772,6 +866,7 @@ def generate_pdf_report(
                 y -= 1 * cm
 
     c.save()
+
 
 
 # -------------------------------------------------------------------
@@ -1185,23 +1280,35 @@ def download_pdf(upload_id: int, db: OrmSession = Depends(get_db)):
     pdf_path = os.path.join(REPORT_DIR, f"rapor_{upload_id}.pdf")
 
     meta: Dict[str, Any] = {
-        "company": upload.company or "",
-        "contact_name": upload.contact_name or "",
-        "contact_email": upload.contact_email or "",
-        "contact_phone": upload.contact_phone or "",
-        "contact_sector": upload.contact_sector or "",
+    "company": upload.company or "",
+    "contact_name": upload.contact_name or "",
+    "contact_email": upload.contact_email or "",
+    "contact_phone": upload.contact_phone or "",
+    "contact_sector": upload.contact_sector or "",
+    }
+
+    metrics: Dict[str, Any] = {
+    "row_count": upload.row_count,
+    "col_count": upload.col_count,
+    "total_cells": upload.total_cells,
+    "total_missing": upload.total_missing,
+    "quality_score": round(upload.quality_score or 0.0, 2) if upload.quality_score is not None else "-",
+    "top_missing_col": upload.top_missing_col or "-",
+    "top_var_col": upload.top_var_col or "-",
     }
 
     generate_pdf_report(
-        output_path=pdf_path,
-        summary=summary,
-        risks=risks,
-        features=features,
-        models=models,
-        recommendations=recs,
-        chart_files=chart_files,
-        meta=meta,
+    output_path=pdf_path,
+    summary=summary,
+    risks=risks,
+    features=features,
+    models=models,
+    recommendations=recs,
+    chart_files=chart_files,
+    meta=meta,
+    metrics=metrics,
     )
+
 
     return FileResponse(
         pdf_path,
