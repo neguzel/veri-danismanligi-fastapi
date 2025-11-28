@@ -314,52 +314,418 @@ Dosya Özeti:
 
 # --- Grafik üretimi ---
 
-def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
+from typing import List, Dict, Any, Optional
+import os
+import json
+from pathlib import Path
+from datetime import datetime
+import textwrap
+
+import pandas as pd
+import matplotlib.pyplot as plt
+from openai import OpenAI
+
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import cm
+
+# -------------------------------------------------------------------
+# Global ayarlar
+# -------------------------------------------------------------------
+
+BASE_DIR = Path(__file__).resolve().parent
+CHART_DIR = os.path.join(BASE_DIR, "static", "charts")
+os.makedirs(CHART_DIR, exist_ok=True)
+
+# PDF font (projenin başka yerinde tanımlıysa bunu override etmez)
+try:
+    PDF_FONT  # type: ignore[name-defined]
+except NameError:
+    PDF_FONT = "Helvetica"
+
+# OpenAI client (API key ortam değişkeninden okunur: OPENAI_API_KEY)
+client = OpenAI()
+
+
+# -------------------------------------------------------------------
+# AI destekli grafik önerisi
+# -------------------------------------------------------------------
+
+def suggest_charts_with_ai(df: pd.DataFrame, max_charts: int = 6) -> List[Dict[str, Any]]:
+    """
+    DataFrame yapısına bakarak OpenAI'den grafik önerileri ister.
+
+    Beklenen çıktı formatı (örnek):
+
+    [
+      {
+        "id": "chart_1",
+        "type": "hist",          # hist | bar | line | pie | box | heatmap
+        "columns": ["age"],
+        "title": "Yaş Dağılımı",
+        "description": "Age kolonunun histogramı."
+      },
+      ...
+    ]
+    """
+    # Şema özeti
+    schema_info = []
+    for col in df.columns:
+        dtype = str(df[col].dtype)
+        nunique = int(df[col].nunique())
+        schema_info.append(
+            {
+                "name": col,
+                "dtype": dtype,
+                "nunique": nunique,
+            }
+        )
+
+    # Sayısal özet
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    numeric_summary: Dict[str, Any] = {}
+    if numeric_cols:
+        desc = df[numeric_cols].describe().T
+        for col in numeric_cols:
+            if col in desc.index:
+                row = desc.loc[col]
+                numeric_summary[col] = {
+                    "mean": float(row.get("mean", 0.0)),
+                    "std": float(row.get("std", 0.0)),
+                    "min": float(row.get("min", 0.0)),
+                    "max": float(row.get("max", 0.0)),
+                }
+
+    system_prompt = """
+Sen bir veri görselleştirme asistanısın. Görevin:
+- Verilen tablo şemasına (kolon adları, veri tipleri, özet istatistikler) bakarak
+- En fazla N adet (max_charts) anlamlı grafik önerisi yapmak.
+- Sadece şu tipleri kullan: "hist", "bar", "line", "pie", "box", "heatmap".
+- Çıktıyı KESİNLİKLE saf JSON liste olarak ver. Başına/sonuna açıklama ekleme.
+
+Her grafik için zorunlu alanlar:
+- "id": Benzersiz bir id (ör: "chart_1")
+- "type": "hist" | "bar" | "line" | "pie" | "box" | "heatmap"
+- "columns": Kullandığın kolon(lar) listesi
+- "title": Kısa ve anlaşılır Türkçe başlık
+- "description": 1-2 cümlelik Türkçe açıklama
+
+Örnek:
+[
+  {
+    "id": "chart_1",
+    "type": "hist",
+    "columns": ["age"],
+    "title": "Yaş Dağılımı",
+    "description": "Age kolonunun histogramını gösterir."
+  }
+]
+"""
+
+    user_content = {
+        "schema": schema_info,
+        "numeric_summary": numeric_summary,
+        "max_charts": max_charts,
+    }
+
+    # OpenAI çağrısı (JSON formatında çıktı istiyoruz)
+    resp = client.chat.completions.create(
+        model="gpt-4.1-mini",  # istersen burada model adını değiştirebilirsin
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": json.dumps(user_content, ensure_ascii=False),
+            },
+        ],
+    )
+
+    raw = resp.choices[0].message.content or ""
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        # Model JSON bozuk gönderirse hiç grafik önerme
+        return []
+
+    # Bazı modeller {"charts":[...]} dönebilir
+    if isinstance(data, dict) and "charts" in data:
+        charts = data["charts"]
+    else:
+        charts = data
+
+    if not isinstance(charts, list):
+        return []
+
+    valid_types = {"hist", "bar", "line", "pie", "box", "heatmap"}
+    cleaned: List[Dict[str, Any]] = []
+    for i, ch in enumerate(charts, start=1):
+        ctype = str(ch.get("type", "")).lower()
+        cols = ch.get("columns") or []
+        if ctype not in valid_types:
+            continue
+        if not cols:
+            continue
+        cleaned.append(
+            {
+                "id": ch.get("id") or f"chart_{i}",
+                "type": ctype,
+                "columns": cols,
+                "title": ch.get("title") or f"Grafik {i}",
+                "description": ch.get("description", ""),
+            }
+        )
+
+    return cleaned
+
+
+# -------------------------------------------------------------------
+# Grafik spesifikasyonuna göre matplotlib ile çizim
+# -------------------------------------------------------------------
+
+def render_chart_from_spec(
+    df: pd.DataFrame,
+    upload_id: int,
+    spec: Dict[str, Any],
+) -> Optional[str]:
+    """
+    AI'den gelen grafik tanımını kullanarak PNG üretir.
+    Dönüş: /static/charts/... şeklinde URL (veya None).
+    """
+    chart_type = spec["type"]
+    cols = spec["columns"]
+    title = spec.get("title") or "Grafik"
+    chart_id = spec.get("id") or "chart"
+
+    plt.figure()
+
+    try:
+        if chart_type == "hist":
+            col = cols[0]
+            df[col].dropna().hist(bins=30)
+            plt.xlabel(col)
+            plt.ylabel("Frekans")
+
+        elif chart_type == "line":
+            # Tek kolon ise index’e göre, iki kolon ise x-y
+            if len(cols) == 1:
+                col = cols[0]
+                df[col].dropna().reset_index(drop=True).plot()
+                plt.xlabel("Index")
+                plt.ylabel(col)
+            else:
+                x, y = cols[0], cols[1]
+                df.dropna(subset=[x, y]).plot(x=x, y=y)
+                plt.xlabel(x)
+                plt.ylabel(y)
+
+        elif chart_type == "bar":
+            # Kategori + sayısal: ilk kolon kategori, ikincisi değer olarak varsayalım
+            if len(cols) >= 2:
+                cat_col, val_col = cols[0], cols[1]
+                tmp = df[[cat_col, val_col]].dropna()
+                if not tmp.empty:
+                    agg = (
+                        tmp.groupby(cat_col)[val_col]
+                        .mean()
+                        .sort_values(ascending=False)
+                        .head(20)
+                    )
+                    agg.plot(kind="bar")
+                    plt.xlabel(cat_col)
+                    plt.ylabel(f"{val_col} (ortalama)")
+            else:
+                # Tek sayısal kolon için histogram benzeri çubuk grafik
+                col = cols[0]
+                df[col].dropna().plot(kind="hist", bins=20)
+                plt.xlabel(col)
+                plt.ylabel("Frekans")
+
+        elif chart_type == "pie":
+            # Kategorik kolona göre value_counts
+            col = cols[0]
+            s = df[col].dropna().value_counts()
+            if s.empty:
+                plt.text(0.5, 0.5, "Veri yok", ha="center", va="center")
+            else:
+                s = s.head(8)
+                if len(s) > 6:
+                    top = s[:5]
+                    other = s[5:].sum()
+                    s = top.append(pd.Series({"Diğer": other}))
+                s.plot(kind="pie", autopct="%1.1f%%")
+                plt.ylabel("")
+
+        elif chart_type == "box":
+            # Birden fazla sayısal kolonun boxplot'u
+            selected = [c for c in cols if c in df.columns]
+            if selected:
+                df[selected].dropna().plot(kind="box")
+                plt.xticks(rotation=45)
+
+        elif chart_type == "heatmap":
+            # Sayısal kolonlar için korelasyon matrisi
+            numeric = df.select_dtypes(include="number")
+            if numeric.shape[1] >= 2:
+                corr = numeric.corr()
+                plt.imshow(corr, interpolation="nearest")
+                plt.colorbar()
+                plt.xticks(
+                    range(len(corr.columns)),
+                    corr.columns,
+                    rotation=45,
+                    ha="right",
+                )
+                plt.yticks(range(len(corr.columns)), corr.columns)
+            else:
+                # Fallback: tek kolon varsa hist çiz
+                if numeric.shape[1] == 1:
+                    col = numeric.columns[0]
+                    numeric[col].dropna().hist(bins=30)
+                    plt.xlabel(col)
+                    plt.ylabel("Frekans")
+                else:
+                    plt.text(0.5, 0.5, "Korelasyon için yeterli sayısal kolon yok",
+                             ha="center", va="center")
+
+        plt.title(title)
+        plt.tight_layout()
+
+        filename = f"{upload_id}_{chart_id}_{chart_type}.png"
+        filepath = os.path.join(CHART_DIR, filename)
+        plt.savefig(filepath)
+        plt.close()
+
+        return f"/static/charts/{filename}"
+
+    except Exception:
+        plt.close()
+        return None
+
+
+# -------------------------------------------------------------------
+# --- Grafik üretimi (AI + fallback) ---
+# -------------------------------------------------------------------
+
+def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
+    """
+    AI destekli grafik üretimi.
+    - OpenAI'den farklı tiplerde grafik şablonları istenir (hist, bar, line, pie, box, heatmap).
+    - Gelen şablonlara göre grafikler çizilir.
+    - Hiç grafik üretilemezse eski davranışa (tüm sayısallar için histogram + ilkine trend) düşer.
+
+    Dönüş:
+      {
+        "charts": [
+          {"title": "...", "url": "...", "description": "...", "type": "..."},
+          ...
+        ],
+        "histograms": [...],   # Geriye dönük uyum için
+        "trend": trend_url veya None
+      }
+    """
+    chart_cards: List[Dict[str, Any]] = []
     hist_paths: List[str] = []
     trend_url: Optional[str] = None
 
-    # Histogramlar
-    for col in numeric_cols:
-        plt.figure()
-        df[col].dropna().hist(bins=30)
-        plt.title(f"{col} - Dağılım")
-        plt.xlabel(col)
-        plt.ylabel("Frekans")
-        plt.tight_layout()
+    # 1) AI'den grafik önerilerini al
+    try:
+        specs = suggest_charts_with_ai(df, max_charts=6)
+    except Exception:
+        specs = []
 
-        filename = f"{upload_id}_hist_{col}.png"
-        filepath = os.path.join(CHART_DIR, filename)
-        plt.savefig(filepath)
-        plt.close()
+    # 2) AI önerilerine göre grafik çiz
+    if specs:
+        for spec in specs:
+            url = render_chart_from_spec(df, upload_id, spec)
+            if not url:
+                continue
+            card = {
+                "title": spec.get("title") or "Grafik",
+                "url": url,
+                "description": spec.get("description", ""),
+                "type": spec.get("type"),
+            }
+            chart_cards.append(card)
+            # Eski yapı ile uyum için histogram listesine de ekleyelim
+            hist_paths.append(url)
 
-        hist_paths.append(f"/static/charts/{filename}")
+    # 3) Eğer hiç grafik üretilemediyse eski basit mantığa dön
+    if not chart_cards:
+        numeric_cols = df.select_dtypes(include="number").columns.tolist()
 
-    # Basit trend (ilk sayısal kolona göre)
-    if numeric_cols:
-        col = numeric_cols[0]
-        plt.figure()
-        df[col].reset_index(drop=True).plot()
-        plt.title(f"{col} - Trend")
-        plt.xlabel("Index")
-        plt.ylabel(col)
-        plt.tight_layout()
+        # Histogramlar
+        for col in numeric_cols:
+            plt.figure()
+            df[col].dropna().hist(bins=30)
+            plt.title(f"{col} - Dağılım")
+            plt.xlabel(col)
+            plt.ylabel("Frekans")
+            plt.tight_layout()
 
-        filename = f"{upload_id}_trend_{col}.png"
-        filepath = os.path.join(CHART_DIR, filename)
-        plt.savefig(filepath)
-        plt.close()
+            filename = f"{upload_id}_hist_{col}.png"
+            filepath = os.path.join(CHART_DIR, filename)
+            plt.savefig(filepath)
+            plt.close()
 
-        trend_url = f"/static/charts/{filename}"
+            url = f"/static/charts/{filename}"
+            hist_paths.append(url)
+            chart_cards.append({"title": f"{col} – Dağılım", "url": url})
 
-    return {"histograms": hist_paths, "trend": trend_url}
+        # Basit trend (ilk sayısal kolona göre)
+        if numeric_cols:
+            col = numeric_cols[0]
+            plt.figure()
+            df[col].reset_index(drop=True).plot()
+            plt.title(f"{col} - Trend")
+            plt.xlabel("Index")
+            plt.ylabel(col)
+            plt.tight_layout()
 
+            filename = f"{upload_id}_trend_{col}.png"
+            filepath = os.path.join(CHART_DIR, filename)
+            plt.savefig(filepath)
+            plt.close()
+
+            trend_url = f"/static/charts/{filename}"
+            chart_cards.append({"title": f"{col} – Trend", "url": trend_url})
+
+    return {
+        "charts": chart_cards,
+        "histograms": hist_paths,
+        "trend": trend_url,
+    }
+
+
+# -------------------------------------------------------------------
+# Grafik kartları (frontend için)
+# -------------------------------------------------------------------
 
 def build_chart_cards(charts: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Template'te kullanılacak kart yapısını üretir.
+    - Yeni "charts" yapısını direkt kullanır.
+    - Eğer yoksa eski "histograms + trend" mantığına döner.
+    """
     cards: List[Dict[str, Any]] = []
     if not charts:
         return cards
 
+    # 1) Yeni yapı: charts listesi
+    ai_cards = charts.get("charts")
+    if ai_cards:
+        for c in ai_cards:
+            cards.append(
+                {
+                    "title": c.get("title", "Grafik"),
+                    "url": c.get("url"),
+                    "description": c.get("description", ""),
+                    "type": c.get("type"),
+                }
+            )
+        return cards
+
+    # 2) Eski yapı: sadece histogram + trend varsa
     histos = charts.get("histograms") or []
     for url in histos:
         base = os.path.basename(url)
@@ -381,7 +747,9 @@ def build_chart_cards(charts: Dict[str, Any]) -> List[Dict[str, Any]]:
     return cards
 
 
-# --- PDF üretimi (AI odaklı rapor) ---
+# -------------------------------------------------------------------
+# PDF üretimi (AI odaklı rapor)
+# -------------------------------------------------------------------
 
 def generate_pdf_report(
     output_path: str,
@@ -405,12 +773,6 @@ def generate_pdf_report(
       - 'Grafikler' başlığı
       - Her sayfada birden fazla grafik, tutarlı başlıklarla
     """
-    from reportlab.pdfgen import canvas
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.units import cm
-    import os
-    import textwrap
-    from datetime import datetime
 
     c = canvas.Canvas(output_path, pagesize=A4)
     width, height = A4
@@ -546,6 +908,7 @@ def generate_pdf_report(
                 y -= 1 * cm
 
     c.save()
+
 
 
 # --- ROUTES ---
@@ -927,52 +1290,100 @@ def admin_global(request: Request, db: Session = Depends(get_db)):
     )
 
 
+from typing import List, Dict, Any, Optional
+import os
+
+from fastapi import HTTPException, Depends
+from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
+
+# varsayıyorum ki bunlar zaten projede var:
+# from .database import get_db
+# from .models import Upload
+# from .charts import build_chart_cards, CHART_DIR
+# from .pdf import generate_pdf_report
+# from .cache import ANALYSIS_CACHE
+# from .config import REPORT_DIR
+
+
 @app.get("/download_pdf/{upload_id}")
 def download_pdf(upload_id: int, db: Session = Depends(get_db)):
     """
     ANALYSIS_CACHE veya DB'deki AI sonuçlarını ve grafik dosyalarını kullanarak PDF raporu indir.
+    Yeni AI grafik yapısı (generate_charts & build_chart_cards) ile uyumlu.
     """
     upload = db.query(Upload).filter(Upload.id == upload_id).first()
     if not upload:
         raise HTTPException(status_code=404, detail="Rapor bulunamadı.")
 
-    # Önce cache, yoksa DB'den AI alanlarını doldur
-    cached = ANALYSIS_CACHE.get(upload_id)
-    if cached:
-        summary = cached.get("ai_summary", upload.ai_summary or "")
-        risks = cached.get("ai_risks", upload.ai_risks or "")
-        features = cached.get("ai_features", upload.ai_features or "")
-        models = cached.get("ai_models", upload.ai_models or "")
-        recs = cached.get("ai_recommendations", upload.ai_recommendations or "")
-    else:
-        summary = upload.ai_summary or ""
-        risks = upload.ai_risks or ""
-        features = upload.ai_features or ""
-        models = upload.ai_models or ""
-        recs = upload.ai_recommendations or ""
+    # --- 1) AI metin alanları: önce cache'e bak, yoksa DB'yi kullan ---
+    cached: Dict[str, Any] = ANALYSIS_CACHE.get(upload_id) or {}
 
-    # Cache içindeki grafik kartlarından dosya yollarını hazırla
+    summary = cached.get("ai_summary", upload.ai_summary or "")
+    risks = cached.get("ai_risks", upload.ai_risks or "")
+    features = cached.get("ai_features", upload.ai_features or "")
+    models = cached.get("ai_models", upload.ai_models or "")
+    recs = cached.get("ai_recommendations", upload.ai_recommendations or "")
+
+    # --- 2) Grafik kartlarını tespit et ---
     chart_files: List[str] = []
-    if cached:
-        chart_cards = cached.get("charts") or []
-        for ch in chart_cards:
-            url = ch.get("url") if isinstance(ch, dict) else None
-            if not url:
-                continue
-            fname = os.path.basename(url)
-            fpath = os.path.join(CHART_DIR, fname)
-            if os.path.exists(fpath):
-                chart_files.append(fpath)
 
+    # cache içindeki "charts":
+    #  - yeni yapıda: generate_charts çıkışı (dict) olabilir
+    #  - eski yapıda: direkt kart listesi (list[dict]) olabilir
+    charts_data = cached.get("charts")
+
+    chart_cards: List[Dict[str, Any]] = []
+
+    if isinstance(charts_data, list):
+        # zaten kart listesi (title, url, description vs.)
+        chart_cards = charts_data
+    elif isinstance(charts_data, dict):
+        # yeni generate_charts çıktısı ({"charts": [...], "histograms": [...], "trend": ...})
+        chart_cards = build_chart_cards(charts_data)
+    else:
+        chart_cards = []
+
+    # --- 3) Kartlardaki URL'leri gerçek dosya yoluna çevir ---
+    for ch in chart_cards:
+        if not isinstance(ch, dict):
+            continue
+        url = ch.get("url")
+        if not url:
+            continue
+
+        # Örnek URL: "/static/charts/1_hist_col.png"
+        fname = os.path.basename(url)
+        fpath = os.path.join(CHART_DIR, fname)
+        if os.path.exists(fpath):
+            chart_files.append(fpath)
+
+    # NOT: İstersen burada "chart_files" boşsa CSV'den DF'i yükleyip
+    # generate_charts(df, upload_id) ile yeniden grafik üretme fallback'i ekleyebilirsin.
+
+    # --- 4) PDF üret ---
     pdf_path = os.path.join(REPORT_DIR, f"rapor_{upload_id}.pdf")
+
+    # Eğer meta bilgisi kullanmak istersen; Upload modelinde hangi alanlar varsa ona göre doldur:
+    meta: Optional[Dict[str, Any]] = None
+    # Örneğin:
+    # meta = {
+    #     "company": upload.company or "",
+    #     "contact_name": upload.contact_name or "",
+    #     "contact_email": upload.contact_email or "",
+    #     "contact_phone": upload.contact_phone or "",
+    #     "contact_sector": upload.contact_sector or "",
+    # }
+
     generate_pdf_report(
-        pdf_path,
+        output_path=pdf_path,
         summary=summary,
         risks=risks,
         features=features,
         models=models,
         recommendations=recs,
         chart_files=chart_files,
+        meta=meta,
     )
 
     return FileResponse(
