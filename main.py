@@ -10,8 +10,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-import requests
-
 from fastapi import FastAPI, Request, UploadFile, File, Form, Depends, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -29,7 +27,7 @@ from sqlalchemy import (
     ForeignKey,
     Text,
 )
-from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session as OrmSession
 
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -38,25 +36,15 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 from openai import OpenAI
-api_key = (os.getenv("OPENAI_API_KEY") or "").strip()
-raw_key = os.getenv("OPENAI_API_KEY") or ""
-api_key = raw_key.strip()  # baştaki/sondaki \n, boşluk vs. temizlenir
-client = OpenAI(api_key=(os.getenv("OPENAI_API_KEY") or "").strip())
-
-
-
-
-# ✅ Yeni: OpenAI SDK
-from openai import OpenAI
-
-# ⭐ .env dosyasını yükle
 from dotenv import load_dotenv
+
+# -------------------------------------------------------------------
+# Ortam değişkenleri / yollar
+# -------------------------------------------------------------------
+
 load_dotenv()
 
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-# --- Yol & klasörler ---
+OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or "").strip()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
@@ -64,19 +52,23 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 CHART_DIR = os.path.join(STATIC_DIR, "charts")
 REPORT_DIR = os.path.join(STATIC_DIR, "reports")
 
+os.makedirs(STATIC_DIR, exist_ok=True)
+os.makedirs(CHART_DIR, exist_ok=True)
+os.makedirs(REPORT_DIR, exist_ok=True)
+
 # PDF için Türkçe karakter desteği olan font kaydı
-# Windows ortamında Arial kullanılmaya çalışılır, bulunamazsa Helvetica'ya düşer.
 try:
     pdfmetrics.registerFont(TTFont("ArialTR", "C:/Windows/Fonts/arial.ttf"))
     PDF_FONT = "ArialTR"
 except Exception:
     PDF_FONT = "Helvetica"
 
-os.makedirs(STATIC_DIR, exist_ok=True)
-os.makedirs(CHART_DIR, exist_ok=True)
-os.makedirs(REPORT_DIR, exist_ok=True)
+# OpenAI client (API key yoksa None)
+client: Optional[OpenAI] = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
-# --- Veritabanı ---
+# -------------------------------------------------------------------
+# Veritabanı
+# -------------------------------------------------------------------
 
 DATABASE_URL = "sqlite:///" + os.path.join(BASE_DIR, "veridanismanligi.db")
 
@@ -93,7 +85,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     # Temel giriş bilgileri
     email = Column(String, unique=True, index=True, nullable=False)
-    password = Column(String, nullable=False)  # Demo için düz şifre, prod için hash önerilir
+    password = Column(String, nullable=False)  # Demo: düz şifre, prod için hash önerilir
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -143,7 +135,9 @@ class Upload(Base):
 
 Base.metadata.create_all(bind=engine)
 
-# --- FastAPI app ---
+# -------------------------------------------------------------------
+# FastAPI app
+# -------------------------------------------------------------------
 
 app = FastAPI(title="Veri Danışmanlığı – Akıllı Veri Analiz Paneli")
 app.add_middleware(SessionMiddleware, secret_key="CHANGE_THIS_SECRET")
@@ -151,11 +145,12 @@ app.add_middleware(SessionMiddleware, secret_key="CHANGE_THIS_SECRET")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
-
 ANALYSIS_CACHE: Dict[int, Dict[str, Any]] = {}
 
 
-# --- DB dependency & yardımcılar ---
+# -------------------------------------------------------------------
+# DB dependency & yardımcılar
+# -------------------------------------------------------------------
 
 def get_db():
     db = SessionLocal()
@@ -165,16 +160,16 @@ def get_db():
         db.close()
 
 
-def current_user(request: Request, db: Session) -> Optional[User]:
+def current_user(request: Request, db: OrmSession) -> Optional[User]:
     user_id = request.session.get("user_id")
     if not user_id:
         return None
     return db.query(User).filter(User.id == user_id).first()
 
 
-# --- AI analizi (Yeni: OpenAI SDK + JSON + tüm sektörler için) ---
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# -------------------------------------------------------------------
+# AI analizi (OpenAI SDK + JSON)
+# -------------------------------------------------------------------
 
 AI_SYSTEM_PROMPT = """
 Sen üst düzey bir veri bilimi danışmanısın.
@@ -186,7 +181,7 @@ Bu bilgiler: satır/kolon sayıları, eksik veri oranı, varyans, alan tipleri, 
 Sana yüklediğim veri setlerinde ilgili verileri analiz et. Analizini yaparken seçilen sektör dinamiklerine göre yorumlar yap. 
 (sağladığım datanın kalitesinden ziyade veriyi anlamlandır.) Bana vereceğin bilgiler ışığında ben firmalara çözüm önerileri sunmak istiyorum. 
 “Uygulanabilir Model Önerileri” kısmında firma verilerin analizi sonucu hangi önerini yaparsa karlılık ve verimlilik arttırır bunu dikkate alacak.” 
-İş / Veri Geliştirme Önerileri” kısmında da verdiğin bilgiler ışığında firma kendisine yol haritası çizecek.
+“İş / Veri Geliştirme Önerileri” kısmında da verdiğin bilgiler ışığında firma kendisine yol haritası çizecek.
 
 ⛔ Kurallar:
 - ÇIKTI HER ZAMAN GEÇERLİ BİR JSON NESNESİ OLACAK.
@@ -208,12 +203,12 @@ Sektör bilgisi varsa (enerji, gıda, çelik, plastik, otomotiv, tekstil, sağl�
 yorumları sektöre uygunlaştır.
 """
 
+
 def _join_list_or_str(value: Any) -> str:
     """LLM'den gelen liste/string değerleri her zaman stringe çevirir."""
     if value is None:
         return ""
     if isinstance(value, list):
-        # Bullet-list gibi gözüksün
         return "\n".join(f"- {str(item)}" for item in value if str(item).strip())
     return str(value)
 
@@ -221,7 +216,7 @@ def _join_list_or_str(value: Any) -> str:
 def ai_analyze_dataframe(df: pd.DataFrame, sector: Optional[str] = None) -> Dict[str, str]:
     """
     Veri seti için sektör bağımsız, yapısal AI analizi.
-    Dönen değerler eski sistemle uyumlu: summary/risks/features/ml_models/recommendations -> hepsi string.
+    Dönen değerler: summary/risks/features/ml_models/recommendations -> hepsi string.
     """
     rows, cols = df.shape
     missing_total = int(df.isna().sum().sum())
@@ -232,13 +227,12 @@ def ai_analyze_dataframe(df: pd.DataFrame, sector: Optional[str] = None) -> Dict
     cat_cols = df.select_dtypes(include=["object", "category", "bool"]).columns.tolist()
 
     # En yüksek varyanslı ilk 5 kolon
-    high_var = []
+    high_var: List[str] = []
     if numeric_cols:
         var_series = df[numeric_cols].var(numeric_only=True).sort_values(ascending=False)
         for c, v in var_series.head(5).items():
             high_var.append(f"{c} (var={round(v, 2)})")
 
-    # LLM'e gidecek özet metin
     summary_text = f"""
 Dosya Özeti:
 - Sektör: {sector or 'belirtilmemiş'}
@@ -250,8 +244,8 @@ Dosya Özeti:
 - En yüksek varyansa sahip alanlar: {', '.join(high_var) if high_var else '-'}
 """.strip()
 
-    # OPENAI_API_KEY yoksa demo fallback
-    if not os.getenv("OPENAI_API_KEY"):
+    # API anahtarı yoksa demo cevap
+    if not client:
         risks_list = [
             "Gerçek zamanlı AI analizi devre dışı (API anahtarı tanımsız).",
             "Eksik veri, aykırı değerler ve iş kuralları manuel olarak kontrol edilmelidir.",
@@ -287,7 +281,7 @@ Dosya Özeti:
             ],
         )
 
-        content = response.choices[0].message.content.strip()
+        content = (response.choices[0].message.content or "").strip()
         data = json.loads(content)
 
         return {
@@ -299,7 +293,6 @@ Dosya Özeti:
         }
 
     except Exception as e:
-        # DEBUG için ham hata mesajını da gösterelim
         err_type = type(e).__name__
         err_msg = str(e)
         return {
@@ -311,65 +304,21 @@ Dosya Özeti:
         }
 
 
-
-# --- Grafik üretimi ---
-
-from typing import List, Dict, Any, Optional
-import os
-import json
-from pathlib import Path
-from datetime import datetime
-import textwrap
-
-import pandas as pd
-import matplotlib.pyplot as plt
-from openai import OpenAI
-
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import cm
-
 # -------------------------------------------------------------------
-# Global ayarlar
-# -------------------------------------------------------------------
-
-BASE_DIR = Path(__file__).resolve().parent
-CHART_DIR = os.path.join(BASE_DIR, "static", "charts")
-os.makedirs(CHART_DIR, exist_ok=True)
-
-# PDF font (projenin başka yerinde tanımlıysa bunu override etmez)
-try:
-    PDF_FONT  # type: ignore[name-defined]
-except NameError:
-    PDF_FONT = "Helvetica"
-
-# OpenAI client (API key ortam değişkeninden okunur: OPENAI_API_KEY)
-client = OpenAI()
-
-
-# -------------------------------------------------------------------
-# AI destekli grafik önerisi
+# AI destekli grafik üretimi
 # -------------------------------------------------------------------
 
 def suggest_charts_with_ai(df: pd.DataFrame, max_charts: int = 6) -> List[Dict[str, Any]]:
     """
     DataFrame yapısına bakarak OpenAI'den grafik önerileri ister.
-
-    Beklenen çıktı formatı (örnek):
-
-    [
-      {
-        "id": "chart_1",
-        "type": "hist",          # hist | bar | line | pie | box | heatmap
-        "columns": ["age"],
-        "title": "Yaş Dağılımı",
-        "description": "Age kolonunun histogramı."
-      },
-      ...
-    ]
+    Tipler: "hist", "bar", "line", "pie", "box", "heatmap"
     """
+    # API key yoksa grafik önerme
+    if not client:
+        return []
+
     # Şema özeti
-    schema_info = []
+    schema_info: List[Dict[str, Any]] = []
     for col in df.columns:
         dtype = str(df[col].dtype)
         nunique = int(df[col].nunique())
@@ -409,17 +358,6 @@ Her grafik için zorunlu alanlar:
 - "columns": Kullandığın kolon(lar) listesi
 - "title": Kısa ve anlaşılır Türkçe başlık
 - "description": 1-2 cümlelik Türkçe açıklama
-
-Örnek:
-[
-  {
-    "id": "chart_1",
-    "type": "hist",
-    "columns": ["age"],
-    "title": "Yaş Dağılımı",
-    "description": "Age kolonunun histogramını gösterir."
-  }
-]
 """
 
     user_content = {
@@ -428,16 +366,12 @@ Her grafik için zorunlu alanlar:
         "max_charts": max_charts,
     }
 
-    # OpenAI çağrısı (JSON formatında çıktı istiyoruz)
     resp = client.chat.completions.create(
-        model="gpt-4.1-mini",  # istersen burada model adını değiştirebilirsin
+        model="gpt-4.1-mini",
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": json.dumps(user_content, ensure_ascii=False),
-            },
+            {"role": "user", "content": json.dumps(user_content, ensure_ascii=False)},
         ],
     )
 
@@ -445,10 +379,8 @@ Her grafik için zorunlu alanlar:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        # Model JSON bozuk gönderirse hiç grafik önerme
         return []
 
-    # Bazı modeller {"charts":[...]} dönebilir
     if isinstance(data, dict) and "charts" in data:
         charts = data["charts"]
     else:
@@ -462,9 +394,7 @@ Her grafik için zorunlu alanlar:
     for i, ch in enumerate(charts, start=1):
         ctype = str(ch.get("type", "")).lower()
         cols = ch.get("columns") or []
-        if ctype not in valid_types:
-            continue
-        if not cols:
+        if ctype not in valid_types or not cols:
             continue
         cleaned.append(
             {
@@ -478,10 +408,6 @@ Her grafik için zorunlu alanlar:
 
     return cleaned
 
-
-# -------------------------------------------------------------------
-# Grafik spesifikasyonuna göre matplotlib ile çizim
-# -------------------------------------------------------------------
 
 def render_chart_from_spec(
     df: pd.DataFrame,
@@ -507,887 +433,4 @@ def render_chart_from_spec(
             plt.ylabel("Frekans")
 
         elif chart_type == "line":
-            # Tek kolon ise index’e göre, iki kolon ise x-y
             if len(cols) == 1:
-                col = cols[0]
-                df[col].dropna().reset_index(drop=True).plot()
-                plt.xlabel("Index")
-                plt.ylabel(col)
-            else:
-                x, y = cols[0], cols[1]
-                df.dropna(subset=[x, y]).plot(x=x, y=y)
-                plt.xlabel(x)
-                plt.ylabel(y)
-
-        elif chart_type == "bar":
-            # Kategori + sayısal: ilk kolon kategori, ikincisi değer olarak varsayalım
-            if len(cols) >= 2:
-                cat_col, val_col = cols[0], cols[1]
-                tmp = df[[cat_col, val_col]].dropna()
-                if not tmp.empty:
-                    agg = (
-                        tmp.groupby(cat_col)[val_col]
-                        .mean()
-                        .sort_values(ascending=False)
-                        .head(20)
-                    )
-                    agg.plot(kind="bar")
-                    plt.xlabel(cat_col)
-                    plt.ylabel(f"{val_col} (ortalama)")
-            else:
-                # Tek sayısal kolon için histogram benzeri çubuk grafik
-                col = cols[0]
-                df[col].dropna().plot(kind="hist", bins=20)
-                plt.xlabel(col)
-                plt.ylabel("Frekans")
-
-        elif chart_type == "pie":
-            # Kategorik kolona göre value_counts
-            col = cols[0]
-            s = df[col].dropna().value_counts()
-            if s.empty:
-                plt.text(0.5, 0.5, "Veri yok", ha="center", va="center")
-            else:
-                s = s.head(8)
-                if len(s) > 6:
-                    top = s[:5]
-                    other = s[5:].sum()
-                    s = top.append(pd.Series({"Diğer": other}))
-                s.plot(kind="pie", autopct="%1.1f%%")
-                plt.ylabel("")
-
-        elif chart_type == "box":
-            # Birden fazla sayısal kolonun boxplot'u
-            selected = [c for c in cols if c in df.columns]
-            if selected:
-                df[selected].dropna().plot(kind="box")
-                plt.xticks(rotation=45)
-
-        elif chart_type == "heatmap":
-            # Sayısal kolonlar için korelasyon matrisi
-            numeric = df.select_dtypes(include="number")
-            if numeric.shape[1] >= 2:
-                corr = numeric.corr()
-                plt.imshow(corr, interpolation="nearest")
-                plt.colorbar()
-                plt.xticks(
-                    range(len(corr.columns)),
-                    corr.columns,
-                    rotation=45,
-                    ha="right",
-                )
-                plt.yticks(range(len(corr.columns)), corr.columns)
-            else:
-                # Fallback: tek kolon varsa hist çiz
-                if numeric.shape[1] == 1:
-                    col = numeric.columns[0]
-                    numeric[col].dropna().hist(bins=30)
-                    plt.xlabel(col)
-                    plt.ylabel("Frekans")
-                else:
-                    plt.text(0.5, 0.5, "Korelasyon için yeterli sayısal kolon yok",
-                             ha="center", va="center")
-
-        plt.title(title)
-        plt.tight_layout()
-
-        filename = f"{upload_id}_{chart_id}_{chart_type}.png"
-        filepath = os.path.join(CHART_DIR, filename)
-        plt.savefig(filepath)
-        plt.close()
-
-        return f"/static/charts/{filename}"
-
-    except Exception:
-        plt.close()
-        return None
-
-
-# -------------------------------------------------------------------
-# --- Grafik üretimi (AI + fallback) ---
-# -------------------------------------------------------------------
-
-def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
-    """
-    AI destekli grafik üretimi.
-    - OpenAI'den farklı tiplerde grafik şablonları istenir (hist, bar, line, pie, box, heatmap).
-    - Gelen şablonlara göre grafikler çizilir.
-    - Hiç grafik üretilemezse eski davranışa (tüm sayısallar için histogram + ilkine trend) düşer.
-
-    Dönüş:
-      {
-        "charts": [
-          {"title": "...", "url": "...", "description": "...", "type": "..."},
-          ...
-        ],
-        "histograms": [...],   # Geriye dönük uyum için
-        "trend": trend_url veya None
-      }
-    """
-    chart_cards: List[Dict[str, Any]] = []
-    hist_paths: List[str] = []
-    trend_url: Optional[str] = None
-
-    # 1) AI'den grafik önerilerini al
-    try:
-        specs = suggest_charts_with_ai(df, max_charts=6)
-    except Exception:
-        specs = []
-
-    # 2) AI önerilerine göre grafik çiz
-    if specs:
-        for spec in specs:
-            url = render_chart_from_spec(df, upload_id, spec)
-            if not url:
-                continue
-            card = {
-                "title": spec.get("title") or "Grafik",
-                "url": url,
-                "description": spec.get("description", ""),
-                "type": spec.get("type"),
-            }
-            chart_cards.append(card)
-            # Eski yapı ile uyum için histogram listesine de ekleyelim
-            hist_paths.append(url)
-
-    # 3) Eğer hiç grafik üretilemediyse eski basit mantığa dön
-    if not chart_cards:
-        numeric_cols = df.select_dtypes(include="number").columns.tolist()
-
-        # Histogramlar
-        for col in numeric_cols:
-            plt.figure()
-            df[col].dropna().hist(bins=30)
-            plt.title(f"{col} - Dağılım")
-            plt.xlabel(col)
-            plt.ylabel("Frekans")
-            plt.tight_layout()
-
-            filename = f"{upload_id}_hist_{col}.png"
-            filepath = os.path.join(CHART_DIR, filename)
-            plt.savefig(filepath)
-            plt.close()
-
-            url = f"/static/charts/{filename}"
-            hist_paths.append(url)
-            chart_cards.append({"title": f"{col} – Dağılım", "url": url})
-
-        # Basit trend (ilk sayısal kolona göre)
-        if numeric_cols:
-            col = numeric_cols[0]
-            plt.figure()
-            df[col].reset_index(drop=True).plot()
-            plt.title(f"{col} - Trend")
-            plt.xlabel("Index")
-            plt.ylabel(col)
-            plt.tight_layout()
-
-            filename = f"{upload_id}_trend_{col}.png"
-            filepath = os.path.join(CHART_DIR, filename)
-            plt.savefig(filepath)
-            plt.close()
-
-            trend_url = f"/static/charts/{filename}"
-            chart_cards.append({"title": f"{col} – Trend", "url": trend_url})
-
-    return {
-        "charts": chart_cards,
-        "histograms": hist_paths,
-        "trend": trend_url,
-    }
-
-
-# -------------------------------------------------------------------
-# Grafik kartları (frontend için)
-# -------------------------------------------------------------------
-
-def build_chart_cards(charts: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    Template'te kullanılacak kart yapısını üretir.
-    - Yeni "charts" yapısını direkt kullanır.
-    - Eğer yoksa eski "histograms + trend" mantığına döner.
-    """
-    cards: List[Dict[str, Any]] = []
-    if not charts:
-        return cards
-
-    # 1) Yeni yapı: charts listesi
-    ai_cards = charts.get("charts")
-    if ai_cards:
-        for c in ai_cards:
-            cards.append(
-                {
-                    "title": c.get("title", "Grafik"),
-                    "url": c.get("url"),
-                    "description": c.get("description", ""),
-                    "type": c.get("type"),
-                }
-            )
-        return cards
-
-    # 2) Eski yapı: sadece histogram + trend varsa
-    histos = charts.get("histograms") or []
-    for url in histos:
-        base = os.path.basename(url)
-        name = os.path.splitext(base)[0]
-        parts = name.split("_")
-        col = parts[-1] if len(parts) > 2 else ""
-        title = f"{col} – Dağılım" if col else "Dağılım Grafiği"
-        cards.append({"title": title, "url": url})
-
-    trend_url = charts.get("trend")
-    if trend_url:
-        base = os.path.basename(trend_url)
-        name = os.path.splitext(base)[0]
-        parts = name.split("_")
-        col = parts[-1] if len(parts) > 2 else ""
-        title = f"{col} – Trend" if col else "Trend Grafiği"
-        cards.append({"title": title, "url": trend_url})
-
-    return cards
-
-
-# -------------------------------------------------------------------
-# PDF üretimi (AI odaklı rapor)
-# -------------------------------------------------------------------
-
-def generate_pdf_report(
-    output_path: str,
-    summary: str,
-    risks: str,
-    features: str,
-    models: str,
-    recommendations: str,
-    chart_files: Optional[List[str]] = None,
-    meta: Optional[Dict[str, Any]] = None,
-) -> None:
-    """
-    Daha düzenli, UX/UI odaklı PDF rapor üretir.
-
-    Sayfa 1:
-      - Başlık, tarih
-      - Firma / müşteri kutusu (meta ile)
-      - AI Özet, Riskler, Feature Engineering, Modeller, Aksiyonlar
-
-    Sonraki sayfalar:
-      - 'Grafikler' başlığı
-      - Her sayfada birden fazla grafik, tutarlı başlıklarla
-    """
-
-    c = canvas.Canvas(output_path, pagesize=A4)
-    width, height = A4
-    margin = 2 * cm
-
-    # Küçük yardımcı fonksiyonlar
-    def new_page_header(title: str) -> float:
-        """Yeni sayfa açar ve başlık basar, kullanılacak y koordinatını döner."""
-        c.showPage()
-        c.setFont(PDF_FONT, 16)
-        y_ = height - margin
-        c.drawString(margin, y_, title)
-        return y_ - 1.2 * cm
-
-    def draw_section_title(txt: str, y_: float) -> float:
-        if y_ < 3 * cm:
-            y_ = new_page_header("Veri Analiz Raporu")
-        c.setFont(PDF_FONT, 12)
-        c.drawString(margin, y_, txt)
-        c.setLineWidth(0.3)
-        c.line(margin, y_ - 0.15 * cm, width - margin, y_ - 0.15 * cm)
-        return y_ - 0.6 * cm
-
-    def draw_paragraph(text: str, y_: float, font_size: int = 10) -> float:
-        """Basit paragraf çizimi, otomatik satır kırma ve sayfa devamı."""
-        if not text:
-            return y_
-        c.setFont(PDF_FONT, font_size)
-        max_chars = 110  # yaklaşık, sayfa genişliğine göre
-        for raw_line in text.splitlines():
-            line = raw_line.strip()
-            if not line:
-                y_ -= 0.4 * cm
-                continue
-            wrapped = textwrap.wrap(line, max_chars) or [line]
-            for wline in wrapped:
-                if y_ < 2.5 * cm:
-                    # yeni sayfa
-                    y_ = new_page_header("Veri Analiz Raporu (devam)")
-                c.drawString(margin, y_, wline)
-                y_ -= 0.45 * cm
-        y_ -= 0.3 * cm
-        return y_
-
-    # ---------- SAYFA 1: Başlık + Tarih ----------
-    c.setFont(PDF_FONT, 18)
-    y = height - margin
-    c.drawString(margin, y, "Veri Analiz Raporu")
-
-    c.setFont(PDF_FONT, 9)
-    created_text = f"Oluşturulma Tarihi: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} (UTC)"
-    c.drawRightString(width - margin, y, created_text)
-
-    y -= 1.2 * cm
-
-    # ---------- Müşteri / Firma Bilgileri Kutusu ----------
-    if meta:
-        c.setFont(PDF_FONT, 11)
-        box_top = y
-        box_bottom = y - 3.2 * cm
-        if box_bottom < 2 * cm:
-            box_bottom = 2 * cm
-        # Çerçeve
-        c.setLineWidth(0.6)
-        c.rect(margin, box_bottom, width - 2 * margin, box_top - box_bottom, stroke=1, fill=0)
-
-        y_line = box_top - 0.8 * cm
-
-        def meta_line(label: str, key: str):
-            nonlocal y_line
-            val = (meta.get(key) or "").strip()
-            if not val:
-                return
-            c.drawString(margin + 0.4 * cm, y_line, f"{label}: {val}")
-            y_line -= 0.55 * cm
-
-        meta_line("Firma", "company")
-        meta_line("Ad Soyad", "contact_name")
-        meta_line("E-posta", "contact_email")
-        meta_line("Telefon", "contact_phone")
-        meta_line("Sektör", "contact_sector")
-
-        y = box_bottom - 0.8 * cm
-    else:
-        y -= 0.4 * cm
-
-    # ---------- AI Bölümleri ----------
-    sections = [
-        ("AI Özet", summary),
-        ("Riskler", risks),
-        ("Feature Engineering Önerileri", features),
-        ("Uygun ML Modelleri", models),
-        ("Aksiyon Önerileri", recommendations),
-    ]
-
-    for title, text in sections:
-        if text and text.strip():
-            y = draw_section_title(title, y)
-            y = draw_paragraph(text, y)
-
-    # ---------- GRAFİKLER ----------
-    if chart_files:
-        # Yeni sayfa başlığı
-        y = new_page_header("Grafikler")
-        c.setFont(PDF_FONT, 10)
-
-        for idx, chart_path in enumerate(chart_files, start=1):
-            if y < 8 * cm:
-                y = new_page_header("Grafikler")
-
-            chart_name = os.path.basename(chart_path)
-            c.setFont(PDF_FONT, 11)
-            c.drawString(margin, y, f"Grafik {idx}: {chart_name}")
-            y -= 0.6 * cm
-
-            try:
-                # Grafik alanı: sayfayı ortalayarak, orantıyı koruyarak
-                img_height = 9 * cm
-                img_width = width - 2 * margin
-                c.drawImage(
-                    chart_path,
-                    margin,
-                    y - img_height,
-                    width=img_width,
-                    height=img_height,
-                    preserveAspectRatio=True,
-                    anchor="n",
-                )
-                y -= img_height + 1 * cm
-            except Exception:
-                c.setFont(PDF_FONT, 9)
-                c.drawString(margin, y, "(Grafik dosyası okunamadı)")
-                y -= 1 * cm
-
-    c.save()
-
-
-
-# --- ROUTES ---
-
-@app.get("/", response_class=HTMLResponse)
-def index(request: Request, db: Session = Depends(get_db)):
-    user = current_user(request, db)
-    return templates.TemplateResponse(
-        "index.html",
-        {"request": request, "user": user},
-    )
-
-
-@app.get("/register", response_class=HTMLResponse)
-def register_get(request: Request):
-    return templates.TemplateResponse("register.html", {"request": request, "error": None})
-
-
-@app.post("/register", response_class=HTMLResponse)
-def register_post(
-    request: Request,
-    full_name: str = Form(...),
-    phone: str = Form(...),
-    company_name: str = Form(""),
-    sector: str = Form(""),
-    email: str = Form(...),
-    password: str = Form(...),
-    db: Session = Depends(get_db),
-):
-    """Kullanıcı kaydı: kullanıcı rolü (is_admin=False) ve profil bilgileri."""
-    existing = db.query(User).filter(User.email == email).first()
-    if existing:
-        return templates.TemplateResponse(
-            "register.html",
-            {"request": request, "error": "Bu e-posta ile zaten bir kullanıcı var."},
-        )
-
-    user = User(
-        email=email,
-        password=password,
-        is_admin=False,  # Arayüzden admin kaydı alınmıyor
-        full_name=full_name,
-        phone=phone,
-        company=company_name,
-        sector=sector,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    request.session["user_id"] = user.id
-    redirect_url = "/dashboard"
-    return RedirectResponse(url=redirect_url, status_code=302)
-
-
-@app.get("/login", response_class=HTMLResponse)
-def login_get(request: Request):
-    """Standart kullanıcı girişi (admin olmayan kullanıcılar için)."""
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
-
-
-@app.post("/login", response_class=HTMLResponse)
-def login_post(
-    request: Request,
-    email: str = Form(...),
-    password: str = Form(...),
-    db: Session = Depends(get_db),
-):
-    user = (
-        db.query(User)
-        .filter(User.email == email, User.password == password)
-        .first()
-    )
-    if not user:
-        return templates.TemplateResponse(
-            "login.html",
-            {"request": request, "error": "Geçersiz e-posta veya şifre."},
-        )
-
-    # Admin buradan girerse sadece kullanıcı dashboard'una yönlendirilir
-    request.session["user_id"] = user.id
-    return RedirectResponse(url="/dashboard", status_code=302)
-
-
-@app.get("/admin/login", response_class=HTMLResponse)
-def admin_login_get(request: Request):
-    """Yalnızca yönetici hesabı için giriş ekranı."""
-    return templates.TemplateResponse("admin_login.html", {"request": request, "error": None})
-
-
-@app.post("/admin/login", response_class=HTMLResponse)
-def admin_login_post(
-    request: Request,
-    email: str = Form(...),
-    password: str = Form(...),
-    db: Session = Depends(get_db),
-):
-    user = (
-        db.query(User)
-        .filter(User.email == email, User.password == password, User.is_admin == True)
-        .first()
-    )
-    if not user:
-        return templates.TemplateResponse(
-            "admin_login.html",
-            {"request": request, "error": "Geçersiz yönetici bilgileri."},
-        )
-
-    request.session["user_id"] = user.id
-    return RedirectResponse(url="/admin/global", status_code=302)
-
-
-@app.get("/logout")
-def logout(request: Request):
-    request.session.clear()
-    return RedirectResponse(url="/login", status_code=302)
-
-
-@app.get("/upload", response_class=HTMLResponse)
-def upload_get(request: Request):
-    """Müşteri veriyi yüklerken login gerektirmeyen form ekranı."""
-    return templates.TemplateResponse(
-        "upload.html",
-        {
-            "request": request,
-            "user": None,
-        },
-    )
-
-
-@app.post("/upload", response_class=HTMLResponse)
-async def upload_post(
-    request: Request,
-    full_name: str = Form(...),
-    company_name: str = Form(...),
-    phone: str = Form(...),
-    email: str = Form(...),
-    sector: str = Form(""),
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-):
-    """Login olmadan, müşteri bilgisi + CSV alıp analiz yapan endpoint."""
-    content = await file.read()
-
-    # CSV > Excel fallback
-    try:
-        df = pd.read_csv(io.BytesIO(content))
-        file_type = "csv"
-    except Exception:
-        try:
-            df = pd.read_excel(io.BytesIO(content))
-            file_type = "excel"
-        except Exception:
-            return templates.TemplateResponse(
-                "upload.html",
-                {
-                    "request": request,
-                    "user": None,
-                    "error": "Dosya okunamadı. Lütfen geçerli bir CSV/Excel dosyası yükleyin.",
-                },
-            )
-
-    rows, cols = df.shape
-    total_cells = int(rows * cols)
-    total_missing = int(df.isna().sum().sum())
-    quality_score = 100.0
-    if total_cells > 0:
-        quality_score = max(0.0, 100.0 - (total_missing / total_cells) * 100.0)
-
-    top_missing_col = df.isna().sum().idxmax() if cols > 0 else None
-    var_series = df.var(numeric_only=True)
-    top_var_col = var_series.idxmax() if not var_series.empty else None
-
-    domain_insights = ["Veri alani belirtilmemis, ozel KPI calismasi onerilir."]
-
-    company_label = company_name or "Firma Belirtilmedi"
-
-    # Upload kaydı (user_id yok, anonim müşteri yüklemesi)
-    upload = Upload(
-        user_id=None,
-        file_name=file.filename,
-        file_type=file_type,
-        company=company_label,
-        row_count=rows,
-        col_count=cols,
-        total_cells=total_cells,
-        total_missing=total_missing,
-        quality_score=quality_score,
-        top_missing_col=top_missing_col,
-        top_var_col=top_var_col,
-        domain_insights="\n".join(domain_insights),
-        contact_name=full_name,
-        contact_phone=phone,
-        contact_email=email,
-        contact_sector=sector,
-    )
-    db.add(upload)
-    db.commit()
-    db.refresh(upload)
-
-    # ✅ Yeni: Sektörü de AI motoruna ilet
-    ai_insights = ai_analyze_dataframe(df, sector=sector)
-    ai_summary = ai_insights.get("summary", "")
-    ai_risks = ai_insights.get("risks", "")
-    ai_features = ai_insights.get("features", "")
-    ai_models = ai_insights.get("ml_models", "")
-    ai_recommendations = ai_insights.get("recommendations", "")
-
-    upload.ai_summary = ai_summary
-    upload.ai_risks = ai_risks
-    upload.ai_features = ai_features
-    upload.ai_models = ai_models
-    upload.ai_recommendations = ai_recommendations
-    db.commit()
-    db.refresh(upload)
-
-    # Grafikler
-    charts_raw = generate_charts(df, upload_id=upload.id)
-    chart_cards = build_chart_cards(charts_raw)
-
-    # Cache
-    ANALYSIS_CACHE[upload.id] = {
-        "file_name": file.filename,
-        "file_type": file_type,
-        "row_count": rows,
-        "col_count": cols,
-        "total_cells": total_cells,
-        "total_missing": total_missing,
-        "quality_score": quality_score,
-        "top_missing_col": top_missing_col,
-        "top_var_col": top_var_col,
-        "domain_insights": domain_insights,
-        "charts": chart_cards,
-        "company": company_label,
-        "ai_summary": ai_summary,
-        "ai_risks": ai_risks,
-        "ai_features": ai_features,
-        "ai_models": ai_models,
-        "ai_recommendations": ai_recommendations,
-        "contact_name": full_name,
-        "contact_phone": phone,
-        "contact_email": email,
-        "contact_sector": sector,
-    }
-
-    request.session["last_upload_id"] = upload.id
-
-    analysis_ctx = {
-        "rows": rows,
-        "cols": cols,
-        "total_cells": total_cells,
-        "total_missing": total_missing,
-        "quality_score": quality_score,
-        "top_missing_col": top_missing_col,
-        "top_var_col": top_var_col,
-        "domain_insights": domain_insights,
-        "charts": chart_cards,
-        "ai_summary": ai_summary,
-        "ai_risks": ai_risks,
-        "ai_features": ai_features,
-        "ai_models": ai_models,
-        "ai_recommendations": ai_recommendations,
-    }
-
-    return templates.TemplateResponse(
-        "report.html",
-        {
-            "request": request,
-            "user": None,
-            "analysis": analysis_ctx,
-            "charts": chart_cards,
-            "ai_comment": ai_summary,
-            "ai_report": ai_recommendations,
-            "company": company_label,
-            "file_name": file.filename,
-            "file_type": file_type,
-            "contact_name": full_name,
-            "contact_phone": phone,
-            "contact_email": email,
-            "contact_sector": sector,
-            "upload_id": upload.id,
-        },
-    )
-
-
-@app.get("/dashboard", response_class=HTMLResponse)
-def dashboard(request: Request, db: Session = Depends(get_db)):
-    user = current_user(request, db)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
-
-    uploads = (
-        db.query(Upload)
-        .filter(Upload.user_id == user.id)
-        .order_by(Upload.created_at.desc())
-        .all()
-    )
-
-    data = None
-    charts: List[Dict[str, Any]] = []
-
-    last_upload_id = request.session.get("last_upload_id")
-    if last_upload_id and last_upload_id in ANALYSIS_CACHE:
-        cached = ANALYSIS_CACHE[last_upload_id]
-        data = {
-            "quality_score": cached["quality_score"],
-            "total_rows": cached["row_count"],
-            "total_columns": cached["col_count"],
-            "total_missing": cached["total_missing"],
-            "ai_summary": cached.get("ai_summary", ""),
-            "ai_details": cached.get("ai_recommendations", ""),
-        }
-        charts = cached.get("charts", [])
-
-    return templates.TemplateResponse(
-        "dashboard.html",
-        {
-            "request": request,
-            "user": user,
-            "uploads": uploads,
-            "data": data,
-            "charts": charts,
-        },
-    )
-
-
-@app.get("/reports", response_class=HTMLResponse)
-def reports(request: Request, db: Session = Depends(get_db)):
-    user = current_user(request, db)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
-
-    uploads = (
-        db.query(Upload)
-        .filter(Upload.user_id == user.id)
-        .order_by(Upload.created_at.desc())
-        .all()
-    )
-
-    return templates.TemplateResponse(
-        "reports.html",
-        {
-            "request": request,
-            "user": user,
-            "uploads": uploads,
-        },
-    )
-
-
-@app.get("/admin", response_class=HTMLResponse)
-def admin_redirect():
-    return RedirectResponse(url="/admin/global", status_code=302)
-
-
-@app.get("/admin/global", response_class=HTMLResponse)
-def admin_global(request: Request, db: Session = Depends(get_db)):
-    user = current_user(request, db)
-    if not user or not user.is_admin:
-        return RedirectResponse(url="/admin/login", status_code=302)
-
-    total_users = db.query(User).count()
-    total_uploads = db.query(Upload).count()
-    last_uploads = (
-        db.query(Upload)
-        .order_by(Upload.created_at.desc())
-        .limit(10)
-        .all()
-    )
-
-    return templates.TemplateResponse(
-        "admin_global.html",
-        {
-            "request": request,
-            "user": user,
-            "total_users": total_users,
-            "total_uploads": total_uploads,
-            "last_uploads": last_uploads,
-        },
-    )
-
-
-from typing import List, Dict, Any, Optional
-import os
-
-from fastapi import HTTPException, Depends
-from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session
-
-# varsayıyorum ki bunlar zaten projede var:
-# from .database import get_db
-# from .models import Upload
-# from .charts import build_chart_cards, CHART_DIR
-# from .pdf import generate_pdf_report
-# from .cache import ANALYSIS_CACHE
-# from .config import REPORT_DIR
-
-
-@app.get("/download_pdf/{upload_id}")
-def download_pdf(upload_id: int, db: Session = Depends(get_db)):
-    """
-    ANALYSIS_CACHE veya DB'deki AI sonuçlarını ve grafik dosyalarını kullanarak PDF raporu indir.
-    Yeni AI grafik yapısı (generate_charts & build_chart_cards) ile uyumlu.
-    """
-    upload = db.query(Upload).filter(Upload.id == upload_id).first()
-    if not upload:
-        raise HTTPException(status_code=404, detail="Rapor bulunamadı.")
-
-    # --- 1) AI metin alanları: önce cache'e bak, yoksa DB'yi kullan ---
-    cached: Dict[str, Any] = ANALYSIS_CACHE.get(upload_id) or {}
-
-    summary = cached.get("ai_summary", upload.ai_summary or "")
-    risks = cached.get("ai_risks", upload.ai_risks or "")
-    features = cached.get("ai_features", upload.ai_features or "")
-    models = cached.get("ai_models", upload.ai_models or "")
-    recs = cached.get("ai_recommendations", upload.ai_recommendations or "")
-
-    # --- 2) Grafik kartlarını tespit et ---
-    chart_files: List[str] = []
-
-    # cache içindeki "charts":
-    #  - yeni yapıda: generate_charts çıkışı (dict) olabilir
-    #  - eski yapıda: direkt kart listesi (list[dict]) olabilir
-    charts_data = cached.get("charts")
-
-    chart_cards: List[Dict[str, Any]] = []
-
-    if isinstance(charts_data, list):
-        # zaten kart listesi (title, url, description vs.)
-        chart_cards = charts_data
-    elif isinstance(charts_data, dict):
-        # yeni generate_charts çıktısı ({"charts": [...], "histograms": [...], "trend": ...})
-        chart_cards = build_chart_cards(charts_data)
-    else:
-        chart_cards = []
-
-    # --- 3) Kartlardaki URL'leri gerçek dosya yoluna çevir ---
-    for ch in chart_cards:
-        if not isinstance(ch, dict):
-            continue
-        url = ch.get("url")
-        if not url:
-            continue
-
-        # Örnek URL: "/static/charts/1_hist_col.png"
-        fname = os.path.basename(url)
-        fpath = os.path.join(CHART_DIR, fname)
-        if os.path.exists(fpath):
-            chart_files.append(fpath)
-
-    # NOT: İstersen burada "chart_files" boşsa CSV'den DF'i yükleyip
-    # generate_charts(df, upload_id) ile yeniden grafik üretme fallback'i ekleyebilirsin.
-
-    # --- 4) PDF üret ---
-    pdf_path = os.path.join(REPORT_DIR, f"rapor_{upload_id}.pdf")
-
-    # Eğer meta bilgisi kullanmak istersen; Upload modelinde hangi alanlar varsa ona göre doldur:
-    meta: Optional[Dict[str, Any]] = None
-    # Örneğin:
-    # meta = {
-    #     "company": upload.company or "",
-    #     "contact_name": upload.contact_name or "",
-    #     "contact_email": upload.contact_email or "",
-    #     "contact_phone": upload.contact_phone or "",
-    #     "contact_sector": upload.contact_sector or "",
-    # }
-
-    generate_pdf_report(
-        output_path=pdf_path,
-        summary=summary,
-        risks=risks,
-        features=features,
-        models=models,
-        recommendations=recs,
-        chart_files=chart_files,
-        meta=meta,
-    )
-
-    return FileResponse(
-        pdf_path,
-        media_type="application/pdf",
-        filename=f"veri_raporu_{upload_id}.pdf",
-    )
