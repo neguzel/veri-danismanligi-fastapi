@@ -6,23 +6,15 @@ python-multipart
 aiofiles
 requests
 
-# Veritabanı (SQLAlchemy)
 sqlalchemy
 pandas
-
-# Matplotlib (grafik üretimi)
 matplotlib
-
-# PDF üretimi (ReportLab)
 reportlab
 
-# OpenAI resmi SDK
 openai
 
-# Şifreleme, oturum, güvenlik
 passlib[bcrypt]
 python-jose
-
-# JSON, veriler
 python-dateutil
-uvicorn
+
+itsdangerous
