@@ -1,6 +1,7 @@
 import os
 import io
 import json
+import re
 import textwrap
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -513,7 +514,9 @@ def render_chart_from_spec(
         plt.title(title)
         plt.tight_layout()
 
-        filename = f"{upload_id}_{chart_id}_{chart_type}.png"
+        safe_id = safe_filename_part(chart_id)
+        filename = f"{upload_id}_{safe_id}_{chart_type}.png"
+
         filepath = os.path.join(CHART_DIR, filename)
         plt.savefig(filepath)
         plt.close()
@@ -523,6 +526,19 @@ def render_chart_from_spec(
     except Exception:
         plt.close()
         return None
+
+def safe_filename_part(value: str, max_len: int = 80) -> str:
+    """
+    Kolon adı, chart_id gibi değerleri dosya adı parçası olarak güvenli hale getirir.
+    - /, \, boşluk, Türkçe karakter vs. hepsi alt çizgiye döner.
+    - Sadece [A-Za-z0-9_.-] kalır.
+    """
+    s = str(value)
+    s = s.replace(os.sep, "_")
+    s = s.replace(" ", "_")
+    # Türkçe karakterler vs. için kaba temizlik
+    s = re.sub(r"[^A-Za-z0-9_.-]", "_", s)
+    return s[:max_len] or "col"
 
 
 def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
@@ -569,9 +585,10 @@ def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
             plt.ylabel("Frekans")
             plt.tight_layout()
 
-            filename = f"{upload_id}_hist_{col}.png"
+            safe_col = safe_filename_part(col)
+            filename = f"{upload_id}_hist_{safe_col}.png"
             filepath = os.path.join(CHART_DIR, filename)
-            plt.savefig(filepath)
+
             plt.close()
 
             url = f"/static/charts/{filename}"
@@ -587,9 +604,10 @@ def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
             plt.ylabel(col)
             plt.tight_layout()
 
-            filename = f"{upload_id}_trend_{col}.png"
-            filepath = os.path.join(CHART_DIR, filename)
-            plt.savefig(filepath)
+           safe_col = safe_filename_part(col)
+           filename = f"{upload_id}_trend_{safe_col}.png"
+           filepath = os.path.join(CHART_DIR, filename)
+
             plt.close()
 
             trend_url = f"/static/charts/{filename}"
