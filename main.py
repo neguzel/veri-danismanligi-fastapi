@@ -62,12 +62,31 @@ os.makedirs(STATIC_DIR, exist_ok=True)
 os.makedirs(CHART_DIR, exist_ok=True)
 os.makedirs(REPORT_DIR, exist_ok=True)
 
+# ---------------------------------------------------------
 # PDF için Türkçe karakter desteği olan font kaydı
-try:
-    pdfmetrics.registerFont(TTFont("ArialTR", "C:/Windows/Fonts/arial.ttf"))
-    PDF_FONT = "ArialTR"
-except Exception:
-    PDF_FONT = "Helvetica"
+# ---------------------------------------------------------
+
+PDF_FONT = "Helvetica"  # en kötü ihtimalle buna düşeriz
+
+FONT_CANDIDATES = [
+    os.getenv("PDF_FONT_PATH"),  # .env ile özel font yolu verebilirsin
+    os.path.join(BASE_DIR, "static", "fonts", "DejaVuSans.ttf"),
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+    "C:/Windows/Fonts/arial.ttf",
+]
+
+for path in FONT_CANDIDATES:
+    if not path:
+        continue
+    try:
+        if os.path.exists(path):
+            pdfmetrics.registerFont(TTFont("AppTR", path))
+            PDF_FONT = "AppTR"
+            break
+    except Exception:
+        continue
+
 
 # -------------------------------------------------------------------
 # Veritabanı
@@ -739,10 +758,6 @@ def generate_pdf_report(
     width, height = A4
     margin = 2 * cm
     metrics = metrics or {}
-    c.setAuthor(meta.get("company", "Veri Danışmanlığı"))
-    c.setTitle("Veri Analiz Raporu")
-    c.setSubject("Otomatik veri analizi ve AI destekli öneriler")
-
 
     # ----------------- Yardımcı fonksiyonlar -----------------
 
@@ -774,27 +789,27 @@ def generate_pdf_report(
         c.setStrokeColor(colors.HexColor("#9CA3AF"))
         c.line(margin, y_ - 0.15 * cm, width - margin, y_ - 0.15 * cm)
         c.setFillColor(colors.black)
-        return y_ - 0.7 * cm
+        return y_ - 0.8 * cm
 
     def draw_paragraph(text: str, y_: float, font_size: int = 10) -> float:
         """Paragraf çizer, sayfa sonunda otomatik devam eder."""
         if not text:
             return y_
         c.setFont(PDF_FONT, font_size)
-        max_chars = 110
+        max_chars = 105
         for raw_line in text.splitlines():
-            line = raw_line.strip()
+            line = raw_line.rstrip()
             if not line:
-                y_ -= 0.4 * cm
+                y_ -= 0.35 * cm
                 continue
             wrapped = textwrap.wrap(line, max_chars) or [line]
             for wline in wrapped:
-                if y_ < 2.5 * cm:
+                if y_ < 2.4 * cm:
                     y_ = new_page_header("Veri Analiz Raporu (devam)")
                     c.setFont(PDF_FONT, font_size)
                 c.drawString(margin, y_, wline)
-                y_ -= 0.45 * cm
-        y_ -= 0.3 * cm
+                y_ -= 0.43 * cm
+        y_ -= 0.25 * cm
         return y_
 
     # ----------------- SAYFA 1: Kapak + içerik -----------------
@@ -819,18 +834,19 @@ def generate_pdf_report(
     if meta:
         c.setFont(PDF_FONT, 11)
         box_top = y
-        box_bottom = y - 3.2 * cm
+        box_bottom = y - 3.0 * cm
         if box_bottom < 2 * cm:
             box_bottom = 2 * cm
 
         c.setLineWidth(0.8)
         c.setStrokeColor(colors.HexColor("#4B5563"))
         c.setFillColor(colors.HexColor("#F9FAFB"))
-        c.rect(
+        c.roundRect(
             margin,
             box_bottom,
             width - 2 * margin,
             box_top - box_bottom,
+            0.3 * cm,
             stroke=1,
             fill=1,
         )
@@ -852,9 +868,9 @@ def generate_pdf_report(
         meta_line("Telefon", "contact_phone")
         meta_line("Sektör", "contact_sector")
 
-        y = box_bottom - 0.8 * cm
+        y = box_bottom - 0.9 * cm
     else:
-        y -= 0.5 * cm
+        y -= 0.6 * cm
 
     # Veri Kalite Özeti
     quality_title = "Veri Kalite Özeti"
@@ -881,14 +897,14 @@ def generate_pdf_report(
     ]
 
     for ln in lines:
-        if y < 2.5 * cm:
+        if y < 2.6 * cm:
             y = new_page_header("Veri Analiz Raporu (devam)")
             y = draw_section_title(quality_title, y)
             c.setFont(PDF_FONT, 10)
         c.drawString(margin + 0.2 * cm, y, ln)
-        y -= 0.5 * cm
+        y -= 0.48 * cm
 
-    y -= 0.4 * cm
+    y -= 0.45 * cm
     c.setFillColor(colors.black)
 
     # AI metin blokları
@@ -952,8 +968,6 @@ def generate_pdf_report(
                 c.drawString(margin, title_y - 0.8 * cm, "(Grafik dosyası okunamadı)")
 
     c.save()
-
-
 # -------------------------------------------------------------------
 # ROUTES
 # -------------------------------------------------------------------
