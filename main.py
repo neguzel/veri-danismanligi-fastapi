@@ -410,121 +410,156 @@ Her grafik için:
     return cleaned
 
 
-def render_chart_from_spec(df: pd.DataFrame, upload_id: int, spec: Dict[str, Any]) -> Optional[str]:
+def render_chart_from_spec(
+    df: pd.DataFrame,
+    upload_id: int,
+    spec: Dict[str, Any],
+) -> Optional[str]:
+    """
+    AI'den gelen grafik tanımını kullanarak PNG üretir.
+    - Tüm grafikler aynı boyutta (8x4.5 inç)
+    - Eksik kolon / veri durumunda zarif fallback
+    """
     chart_type = spec["type"]
     cols = spec["columns"]
     title = spec.get("title") or "Grafik"
     chart_id = spec.get("id") or "chart"
 
-    plt.figure()
+    # Geçersiz kolonları filtrele
+    cols = [c for c in cols if c in df.columns]
+    if not cols:
+        return None
+
+    fig, ax = plt.subplots(figsize=(8, 4.5))
 
     try:
         if chart_type == "hist":
             col = cols[0]
-            df[col].dropna().hist(bins=30)
-            plt.xlabel(col)
-            plt.ylabel("Frekans")
+            series = df[col].dropna()
+            if series.empty:
+                ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
+            else:
+                ax.hist(series, bins=30)
+                ax.set_xlabel(col)
+                ax.set_ylabel("Frekans")
 
         elif chart_type == "line":
             if len(cols) == 1:
                 col = cols[0]
-                df[col].dropna().reset_index(drop=True).plot()
-                plt.xlabel("Index")
-                plt.ylabel(col)
+                series = df[col].dropna().reset_index(drop=True)
+                if series.empty:
+                    ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
+                else:
+                    ax.plot(series.index, series.values, marker="o", linewidth=1.4)
+                    ax.set_xlabel("Index")
+                    ax.set_ylabel(col)
             else:
                 x, y = cols[0], cols[1]
-                df.dropna(subset=[x, y]).plot(x=x, y=y)
-                plt.xlabel(x)
-                plt.ylabel(y)
+                tmp = df[[x, y]].dropna()
+                if tmp.empty:
+                    ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
+                else:
+                    ax.plot(tmp[x], tmp[y], marker="o", linewidth=1.4)
+                    ax.set_xlabel(x)
+                    ax.set_ylabel(y)
 
         elif chart_type == "bar":
             if len(cols) >= 2:
                 cat_col, val_col = cols[0], cols[1]
                 tmp = df[[cat_col, val_col]].dropna()
-                if not tmp.empty:
+                if tmp.empty:
+                    ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
+                else:
                     agg = (
                         tmp.groupby(cat_col)[val_col]
                         .mean()
                         .sort_values(ascending=False)
-                        .head(20)
+                        .head(15)
                     )
-                    agg.plot(kind="bar")
-                    plt.xlabel(cat_col)
-                    plt.ylabel(f"{val_col} (ortalama)")
+                    ax.bar(agg.index.astype(str), agg.values)
+                    ax.set_xlabel(cat_col)
+                    ax.set_ylabel(f"{val_col} (ortalama)")
+                    ax.tick_params(axis="x", rotation=45, ha="right")
             else:
                 col = cols[0]
-                df[col].dropna().plot(kind="hist", bins=20)
-                plt.xlabel(col)
-                plt.ylabel("Frekans")
+                series = df[col].dropna()
+                if series.empty:
+                    ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
+                else:
+                    ax.hist(series, bins=20)
+                    ax.set_xlabel(col)
+                    ax.set_ylabel("Frekans")
 
         elif chart_type == "pie":
             col = cols[0]
             s = df[col].dropna().value_counts()
             if s.empty:
-                plt.text(0.5, 0.5, "Veri yok", ha="center", va="center")
+                ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
             else:
                 s = s.head(8)
                 if len(s) > 6:
                     top = s[:5]
                     other = s[5:].sum()
                     s = top.append(pd.Series({"Diğer": other}))
-                s.plot(kind="pie", autopct="%1.1f%%")
-                plt.ylabel("")
+                ax.pie(s.values, labels=s.index.astype(str), autopct="%1.1f%%")
+                ax.set_ylabel("")
 
         elif chart_type == "box":
             selected = [c for c in cols if c in df.columns]
             if selected:
-                df[selected].dropna().plot(kind="box")
-                plt.xticks(rotation=45)
+                df[selected].dropna().boxplot(ax=ax)
+                ax.tick_params(axis="x", rotation=45, ha="right")
+            else:
+                ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
 
         elif chart_type == "heatmap":
             numeric = df.select_dtypes(include="number")
             if numeric.shape[1] >= 2:
                 corr = numeric.corr()
-                plt.imshow(corr, interpolation="nearest")
-                plt.colorbar()
-                plt.xticks(
-                    range(len(corr.columns)),
-                    corr.columns,
-                    rotation=45,
-                    ha="right",
-                )
-                plt.yticks(range(len(corr.columns)), corr.columns)
+                im = ax.imshow(corr.values, interpolation="nearest")
+                fig.colorbar(im, ax=ax)
+                ax.set_xticks(range(len(corr.columns)))
+                ax.set_xticklabels(corr.columns, rotation=45, ha="right")
+                ax.set_yticks(range(len(corr.columns)))
+                ax.set_yticklabels(corr.columns)
             else:
-                if numeric.shape[1] == 1:
-                    col = numeric.columns[0]
-                    numeric[col].dropna().hist(bins=30)
-                    plt.xlabel(col)
-                    plt.ylabel("Frekans")
-                else:
-                    plt.text(
-                        0.5,
-                        0.5,
-                        "Korelasyon için yeterli sayısal kolon yok",
-                        ha="center",
-                        va="center",
-                    )
+                ax.text(
+                    0.5,
+                    0.5,
+                    "Korelasyon için yeterli sayısal kolon yok",
+                    ha="center",
+                    va="center",
+                )
 
-        plt.title(title)
-        plt.tight_layout()
+        ax.set_title(title)
+        fig.tight_layout()
 
         safe_id = safe_filename_part(chart_id)
         filename = f"{upload_id}_{safe_id}_{chart_type}.png"
         filepath = os.path.join(CHART_DIR, filename)
-        plt.savefig(filepath)
-        plt.close()
+        fig.savefig(filepath, dpi=140)
+        plt.close(fig)
 
         return f"/static/charts/{filename}"
 
     except Exception:
-        plt.close()
+        plt.close(fig)
         return None
 
 
+
 def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
+    """
+    AI destekli grafik üretimi.
+    - OpenAI'den farklı tiplerde grafik şablonları istenir.
+    - Gelen şablonlara göre modern görünümlü grafikler çizilir.
+    - Hiç grafik üretilemezse:
+        * En fazla 3 sayısal kolon için histogram
+        * Tüm sayısallar için korelasyon heatmap
+    """
     chart_cards: List[Dict[str, Any]] = []
     hist_paths: List[str] = []
-    trend_url: Optional[str] = None
+    trend_url: Optional[str] = None  # Eski API ile uyum için; artık özel trend çizmesek de field dursun.
 
     # 1) AI önerileri
     try:
@@ -544,51 +579,65 @@ def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
                 "type": spec.get("type"),
             }
             chart_cards.append(card)
+            # Geriye dönük uyum: histogram listesine de ekle
             hist_paths.append(url)
 
     # 2) Hiç grafik yoksa fallback
     if not chart_cards:
         numeric_cols = df.select_dtypes(include="number").columns.tolist()
 
-        # Histogramlar
-        for col in numeric_cols:
+        # a) En fazla 3 histogram
+        for col in numeric_cols[:3]:
             safe_col = safe_filename_part(col)
-
-            plt.figure()
-            df[col].dropna().hist(bins=30)
-            plt.title(f"{col} - Dağılım")
-            plt.xlabel(col)
-            plt.ylabel("Frekans")
-            plt.tight_layout()
+            fig, ax = plt.subplots(figsize=(8, 4.5))
+            series = df[col].dropna()
+            if series.empty:
+                ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
+            else:
+                ax.hist(series, bins=30)
+                ax.set_xlabel(col)
+                ax.set_ylabel("Frekans")
+            ax.set_title(f"{col} - Dağılım")
+            fig.tight_layout()
 
             filename = f"{upload_id}_hist_{safe_col}.png"
             filepath = os.path.join(CHART_DIR, filename)
-            plt.savefig(filepath)
-            plt.close()
+            fig.savefig(filepath, dpi=140)
+            plt.close(fig)
 
             url = f"/static/charts/{filename}"
             hist_paths.append(url)
-            chart_cards.append({"title": f"{col} – Dağılım", "url": url})
+            chart_cards.append({"title": f"{col} – Dağılım", "url": url, "description": "", "type": "hist"})
 
-        # Trend
-        if numeric_cols:
-            first_col = numeric_cols[0]
-            safe_first = safe_filename_part(first_col)
+        # b) Korelasyon heatmap (varsa)
+        numeric = df.select_dtypes(include="number")
+        if numeric.shape[1] >= 2:
+            corr = numeric.corr()
+            fig, ax = plt.subplots(figsize=(7, 6))
+            im = ax.imshow(corr.values, interpolation="nearest")
+            fig.colorbar(im, ax=ax)
+            ax.set_xticks(range(len(corr.columns)))
+            ax.set_xticklabels(corr.columns, rotation=45, ha="right")
+            ax.set_yticks(range(len(corr.columns)))
+            ax.set_yticklabels(corr.columns)
+            ax.set_title("Sayısal Değişkenler Korelasyon Matrisi")
+            fig.tight_layout()
 
-            plt.figure()
-            df[first_col].reset_index(drop=True).plot()
-            plt.title(f"{first_col} - Trend")
-            plt.xlabel("Index")
-            plt.ylabel(first_col)
-            plt.tight_layout()
-
-            filename = f"{upload_id}_trend_{safe_first}.png"
+            filename = f"{upload_id}_corr_heatmap.png"
             filepath = os.path.join(CHART_DIR, filename)
-            plt.savefig(filepath)
-            plt.close()
+            fig.savefig(filepath, dpi=140)
+            plt.close(fig)
 
-            trend_url = f"/static/charts/{filename}"
-            chart_cards.append({"title": f"{first_col} – Trend", "url": trend_url})
+            url = f"/static/charts/{filename}"
+            chart_cards.append(
+                {
+                    "title": "Korelasyon Heatmap",
+                    "url": url,
+                    "description": "Sayısal değişkenler arasındaki korelasyon ilişkilerini gösterir.",
+                    "type": "heatmap",
+                }
+            )
+            hist_paths.append(url)
 
     return {
         "charts": chart_cards,
@@ -596,44 +645,6 @@ def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
         "trend": trend_url,
     }
 
-
-def build_chart_cards(charts: Dict[str, Any]) -> List[Dict[str, Any]]:
-    cards: List[Dict[str, Any]] = []
-    if not charts:
-        return cards
-
-    ai_cards = charts.get("charts")
-    if ai_cards:
-        for c in ai_cards:
-            cards.append(
-                {
-                    "title": c.get("title", "Grafik"),
-                    "url": c.get("url"),
-                    "description": c.get("description", ""),
-                    "type": c.get("type"),
-                }
-            )
-        return cards
-
-    histos = charts.get("histograms") or []
-    for url in histos:
-        base = os.path.basename(url)
-        name = os.path.splitext(base)[0]
-        parts = name.split("_")
-        col = parts[-1] if len(parts) > 2 else ""
-        title = f"{col} – Dağılım" if col else "Dağılım Grafiği"
-        cards.append({"title": title, "url": url})
-
-    trend_url = charts.get("trend")
-    if trend_url:
-        base = os.path.basename(trend_url)
-        name = os.path.splitext(base)[0]
-        parts = name.split("_")
-        col = parts[-1] if len(parts) > 2 else ""
-        title = f"{col} – Trend" if col else "Trend Grafiği"
-        cards.append({"title": title, "url": trend_url})
-
-    return cards
 
 
 # -------------------------------------------------------------------
@@ -833,37 +844,55 @@ def generate_pdf_report(
             y = draw_section_title(title, y)
             y = draw_paragraph(text, y)
 
-    # ----------------- GRAFİKLER -----------------
-    if chart_files:
-        y = new_page_header("Grafikler")
-        c.setFont(PDF_FONT, 10)
+        # ----------------- GRAFİKLER -----------------
+     if chart_files:
+        # Her sayfada en fazla 2 grafik
+        max_per_page = 2
+        img_height = 7 * cm
+        img_width = width - 2 * margin
+        vertical_gap = 1.5 * cm
+
+        def page_layout_header() -> None:
+            c.setFont(PDF_FONT, 14)
+            c.drawString(margin, height - 2.6 * cm, "Grafikler")
+
+        y_top_slot = height - 3.2 * cm  # ilk grafiğin başlık y'si
+
+        y = new_page_header("Veri Analiz Raporu – Grafikler")
+        page_layout_header()
 
         for idx, chart_path in enumerate(chart_files, start=1):
-            if y < 8 * cm:
-                y = new_page_header("Grafikler")
+            slot_index = (idx - 1) % max_per_page
+
+            # Yeni sayfa gerektiğinde
+            if slot_index == 0 and idx > 1:
+                y = new_page_header("Veri Analiz Raporu – Grafikler")
+                page_layout_header()
+
+            # Slot'a göre Y koordinatı
+            if slot_index == 0:
+                title_y = height - 3.2 * cm
+            else:
+                title_y = height - 3.2 * cm - img_height - vertical_gap
 
             chart_name = os.path.basename(chart_path)
             c.setFont(PDF_FONT, 11)
-            c.drawString(margin, y, f"Grafik {idx}: {chart_name}")
-            y -= 0.6 * cm
+            c.drawString(margin, title_y, f"Grafik {idx}")
 
             try:
-                img_height = 9 * cm
-                img_width = width - 2 * margin
+                img_y = title_y - 0.6 * cm
                 c.drawImage(
                     chart_path,
                     margin,
-                    y - img_height,
+                    img_y - img_height,
                     width=img_width,
                     height=img_height,
                     preserveAspectRatio=True,
                     anchor="n",
                 )
-                y -= img_height + 1 * cm
             except Exception:
                 c.setFont(PDF_FONT, 9)
-                c.drawString(margin, y, "(Grafik dosyası okunamadı)")
-                y -= 1 * cm
+                c.drawString(margin, title_y - 0.8 * cm, "(Grafik dosyası okunamadı)")
 
     c.save()
 
