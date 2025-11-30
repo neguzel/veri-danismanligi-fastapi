@@ -673,7 +673,7 @@ def generate_pdf_report(
 
     Sonraki sayfalar:
       - 'Grafikler' başlığı
-      - Her sayfada 1–2 grafik
+      - Her sayfada en fazla 2 grafik
     """
 
     c = canvas.Canvas(output_path, pagesize=A4)
@@ -684,9 +684,8 @@ def generate_pdf_report(
     # ----------------- Yardımcı fonksiyonlar -----------------
 
     def new_page_header(title: str) -> float:
-        """Yeni sayfa + üst başlık barı."""
+        """Yeni sayfa + üst başlık barı döndürür, kullanılacak y koordinatını verir."""
         c.showPage()
-        # üst bar
         bar_h = 2.0 * cm
         c.setFillColor(colors.HexColor("#020617"))
         c.rect(0, height - bar_h, width, bar_h, stroke=0, fill=1)
@@ -776,7 +775,7 @@ def generate_pdf_report(
         c.setFillColor(colors.black)
         y_line = box_top - 0.8 * cm
 
-        def meta_line(label: str, key: str):
+        def meta_line(label: str, key: str) -> None:
             nonlocal y_line
             val = (meta.get(key) or "").strip()
             if not val:
@@ -794,11 +793,10 @@ def generate_pdf_report(
     else:
         y -= 0.5 * cm
 
-    # Veri Kalite Özeti kutusu
+    # Veri Kalite Özeti
     quality_title = "Veri Kalite Özeti"
     y = draw_section_title(quality_title, y)
 
-    # Küçük kart tarzı görünüm
     c.setFont(PDF_FONT, 10)
     c.setFillColor(colors.HexColor("#111827"))
 
@@ -844,9 +842,8 @@ def generate_pdf_report(
             y = draw_section_title(title, y)
             y = draw_paragraph(text, y)
 
-        # ----------------- GRAFİKLER -----------------
-     if chart_files:
-        # Her sayfada en fazla 2 grafik
+    # ----------------- GRAFİKLER -----------------
+    if chart_files:
         max_per_page = 2
         img_height = 7 * cm
         img_width = width - 2 * margin
@@ -856,9 +853,8 @@ def generate_pdf_report(
             c.setFont(PDF_FONT, 14)
             c.drawString(margin, height - 2.6 * cm, "Grafikler")
 
-        y_top_slot = height - 3.2 * cm  # ilk grafiğin başlık y'si
-
-        y = new_page_header("Veri Analiz Raporu – Grafikler")
+        # İlk grafik sayfasını aç
+        new_page_header("Veri Analiz Raporu – Grafikler")
         page_layout_header()
 
         for idx, chart_path in enumerate(chart_files, start=1):
@@ -866,7 +862,7 @@ def generate_pdf_report(
 
             # Yeni sayfa gerektiğinde
             if slot_index == 0 and idx > 1:
-                y = new_page_header("Veri Analiz Raporu – Grafikler")
+                new_page_header("Veri Analiz Raporu – Grafikler")
                 page_layout_header()
 
             # Slot'a göre Y koordinatı
@@ -875,7 +871,6 @@ def generate_pdf_report(
             else:
                 title_y = height - 3.2 * cm - img_height - vertical_gap
 
-            chart_name = os.path.basename(chart_path)
             c.setFont(PDF_FONT, 11)
             c.drawString(margin, title_y, f"Grafik {idx}")
 
@@ -895,6 +890,7 @@ def generate_pdf_report(
                 c.drawString(margin, title_y - 0.8 * cm, "(Grafik dosyası okunamadı)")
 
     c.save()
+
 
 
 
