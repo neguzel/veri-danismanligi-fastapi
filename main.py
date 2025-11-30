@@ -645,6 +645,64 @@ def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
         "trend": trend_url,
     }
 
+def build_chart_cards(charts: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Template'te kullanılacak kart yapısını üretir.
+
+    Beklenen giriş:
+      - Yeni yapı: {
+          "charts": [
+             {"title": "...", "url": "...", "description": "...", "type": "..."},
+             ...
+          ],
+          "histograms": [...],
+          "trend": "..."
+        }
+
+      - Eski yapı: {"histograms": [...], "trend": "..."}
+    """
+    cards: List[Dict[str, Any]] = []
+    if not charts:
+        return cards
+
+    # 1) Yeni yapı: charts listesi varsa direkt onu kullan
+    ai_cards = charts.get("charts")
+    if isinstance(ai_cards, list) and ai_cards:
+        for c in ai_cards:
+            if not isinstance(c, dict):
+                continue
+            cards.append(
+                {
+                    "title": c.get("title", "Grafik"),
+                    "url": c.get("url"),
+                    "description": c.get("description", ""),
+                    "type": c.get("type"),
+                }
+            )
+        return cards
+
+    # 2) Eski yapı: sadece histogram + trend varsa
+    histos = charts.get("histograms") or []
+    for url in histos:
+        if not url:
+            continue
+        base = os.path.basename(url)
+        name = os.path.splitext(base)[0]
+        parts = name.split("_")
+        col = parts[-1] if len(parts) > 2 else ""
+        title = f"{col} – Dağılım" if col else "Dağılım Grafiği"
+        cards.append({"title": title, "url": url})
+
+    trend_url = charts.get("trend")
+    if trend_url:
+        base = os.path.basename(trend_url)
+        name = os.path.splitext(base)[0]
+        parts = name.split("_")
+        col = parts[-1] if len(parts) > 2 else ""
+        title = f"{col} – Trend" if col else "Trend Grafiği"
+        cards.append({"title": title, "url": trend_url})
+
+    return cards
 
 
 # -------------------------------------------------------------------
