@@ -792,25 +792,41 @@ def generate_pdf_report(
         return y_ - 0.8 * cm
 
     def draw_paragraph(text: str, y_: float, font_size: int = 10) -> float:
-        """Paragraf çizer, sayfa sonunda otomatik devam eder."""
-        if not text:
-            return y_
-        c.setFont(PDF_FONT, font_size)
-        max_chars = 105
-        for raw_line in text.splitlines():
-            line = raw_line.rstrip()
-            if not line:
-                y_ -= 0.35 * cm
-                continue
-            wrapped = textwrap.wrap(line, max_chars) or [line]
-            for wline in wrapped:
-                if y_ < 2.4 * cm:
-                    y_ = new_page_header("Veri Analiz Raporu (devam)")
-                    c.setFont(PDF_FONT, font_size)
-                c.drawString(margin, y_, wline)
-                y_ -= 0.43 * cm
-        y_ -= 0.25 * cm
+    """Paragraf çizer, sayfa sonunda otomatik devam eder.
+       - ile başlayan satırları madde olarak biraz içerden başlatır.
+    """
+    if not text:
         return y_
+    c.setFont(PDF_FONT, font_size)
+    max_chars = 110
+
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip()
+        if not line:
+            y_ -= 0.4 * cm
+            continue
+
+        is_bullet = line.lstrip().startswith("-")
+        indent = margin + (0.4 * cm if is_bullet else 0)
+
+        # Başındaki "-" işaretini tekilleştir
+        if is_bullet:
+            line = line.lstrip()[1:].lstrip()
+            prefix = "• "
+        else:
+            prefix = ""
+
+        wrapped = textwrap.wrap(prefix + line, max_chars) or [prefix + line]
+        for idx, wline in enumerate(wrapped):
+            if y_ < 2.5 * cm:
+                y_ = new_page_header("Veri Analiz Raporu (devam)")
+                c.setFont(PDF_FONT, font_size)
+            c.drawString(indent, y_, wline)
+            y_ -= 0.45 * cm
+
+    y_ -= 0.2 * cm
+    return y_
+
 
     # ----------------- SAYFA 1: Kapak + içerik -----------------
 
@@ -924,49 +940,49 @@ def generate_pdf_report(
     # ----------------- GRAFİKLER -----------------
     if chart_files:
         max_per_page = 2
-        img_height = 7 * cm
+        img_height = 6.5 * cm
         img_width = width - 2 * margin
-        vertical_gap = 1.5 * cm
+        vertical_gap = 1.8 * cm
 
         def page_layout_header() -> None:
             c.setFont(PDF_FONT, 14)
             c.drawString(margin, height - 2.6 * cm, "Grafikler")
+        new_page_header("Veri Analiz Raporu – Grafikler")
+        page_layout_header()
 
         # İlk grafik sayfası
         new_page_header("Veri Analiz Raporu – Grafikler")
         page_layout_header()
+       
+       for idx, chart_path in enumerate(chart_files, start=1):
+        slot_index = (idx - 1) % max_per_page
+        if slot_index == 0 and idx > 1:
+            new_page_header("Veri Analiz Raporu – Grafikler")
+            page_layout_header()
 
-        for idx, chart_path in enumerate(chart_files, start=1):
-            slot_index = (idx - 1) % max_per_page
+        # üst slot / alt slot
+        if slot_index == 0:
+            title_y = height - 3.4 * cm
+        else:
+            title_y = height - 3.4 * cm - img_height - vertical_gap
 
-            # Yeni sayfa
-            if slot_index == 0 and idx > 1:
-                new_page_header("Veri Analiz Raporu – Grafikler")
-                page_layout_header()
+        c.setFont(PDF_FONT, 11)
+        c.drawString(margin, title_y, f"Grafik {idx}")
 
-            if slot_index == 0:
-                title_y = height - 3.2 * cm
-            else:
-                title_y = height - 3.2 * cm - img_height - vertical_gap
-
-            c.setFont(PDF_FONT, 11)
-            c.drawString(margin, title_y, f"Grafik {idx}")
-
-            try:
-                img_y = title_y - 0.6 * cm
-                c.drawImage(
-                    chart_path,
-                    margin,
-                    img_y - img_height,
-                    width=img_width,
-                    height=img_height,
-                    preserveAspectRatio=True,
-                    anchor="n",
-                )
-            except Exception:
-                c.setFont(PDF_FONT, 9)
-                c.drawString(margin, title_y - 0.8 * cm, "(Grafik dosyası okunamadı)")
-
+        try:
+            img_y = title_y - 0.7 * cm
+            c.drawImage(
+                chart_path,
+                margin,
+                img_y - img_height,
+                width=img_width,
+                height=img_height,
+                preserveAspectRatio=True,
+                anchor="n",
+            )
+        except Exception:
+            c.setFont(PDF_FONT, 9)
+            c.drawString(margin, title_y - 0.8 * cm, "(Grafik dosyası okunamadı)")
     c.save()
 # -------------------------------------------------------------------
 # ROUTES
