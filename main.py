@@ -479,7 +479,8 @@ def render_chart_from_spec(
                     ax.bar(agg.index.astype(str), agg.values)
                     ax.set_xlabel(cat_col)
                     ax.set_ylabel(f"{val_col} (ortalama)")
-                    ax.tick_params(axis="x", rotation=45, ha="right")
+                    # X ekseni etiketlerini yana yatır + sağa hizala
+                    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
             else:
                 col = cols[0]
                 series = df[col].dropna()
@@ -508,7 +509,7 @@ def render_chart_from_spec(
             selected = [c for c in cols if c in df.columns]
             if selected:
                 df[selected].dropna().boxplot(ax=ax)
-                ax.tick_params(axis="x", rotation=45, ha="right")
+                plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
             else:
                 ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
 
@@ -738,6 +739,10 @@ def generate_pdf_report(
     width, height = A4
     margin = 2 * cm
     metrics = metrics or {}
+    c.setAuthor(meta.get("company", "Veri Danışmanlığı"))
+    c.setTitle("Veri Analiz Raporu")
+    c.setSubject("Otomatik veri analizi ve AI destekli öneriler")
+
 
     # ----------------- Yardımcı fonksiyonlar -----------------
 
