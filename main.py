@@ -684,7 +684,7 @@ def generate_pdf_report(
     # ----------------- Yardımcı fonksiyonlar -----------------
 
     def new_page_header(title: str) -> float:
-        """Yeni sayfa + üst başlık barı döndürür, kullanılacak y koordinatını verir."""
+        """Yeni sayfa + üst başlık barı döner, kullanılacak y koordinatını verir."""
         c.showPage()
         bar_h = 2.0 * cm
         c.setFillColor(colors.HexColor("#020617"))
@@ -714,7 +714,7 @@ def generate_pdf_report(
         return y_ - 0.7 * cm
 
     def draw_paragraph(text: str, y_: float, font_size: int = 10) -> float:
-        """Basit paragraf + sayfa devamı."""
+        """Paragraf çizer, sayfa sonunda otomatik devam eder."""
         if not text:
             return y_
         c.setFont(PDF_FONT, font_size)
@@ -775,7 +775,7 @@ def generate_pdf_report(
         c.setFillColor(colors.black)
         y_line = box_top - 0.8 * cm
 
-        def meta_line(label: str, key: str) -> None:
+        def meta_line(label: str, key: str):
             nonlocal y_line
             val = (meta.get(key) or "").strip()
             if not val:
@@ -853,19 +853,18 @@ def generate_pdf_report(
             c.setFont(PDF_FONT, 14)
             c.drawString(margin, height - 2.6 * cm, "Grafikler")
 
-        # İlk grafik sayfasını aç
+        # İlk grafik sayfası
         new_page_header("Veri Analiz Raporu – Grafikler")
         page_layout_header()
 
         for idx, chart_path in enumerate(chart_files, start=1):
             slot_index = (idx - 1) % max_per_page
 
-            # Yeni sayfa gerektiğinde
+            # Yeni sayfa
             if slot_index == 0 and idx > 1:
                 new_page_header("Veri Analiz Raporu – Grafikler")
                 page_layout_header()
 
-            # Slot'a göre Y koordinatı
             if slot_index == 0:
                 title_y = height - 3.2 * cm
             else:
@@ -890,8 +889,6 @@ def generate_pdf_report(
                 c.drawString(margin, title_y - 0.8 * cm, "(Grafik dosyası okunamadı)")
 
     c.save()
-
-
 
 
 # -------------------------------------------------------------------
