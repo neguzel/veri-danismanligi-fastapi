@@ -1440,6 +1440,11 @@ async def upload_post(
     )
 
 """
+@app.get("/reports")
+def reports_redirect():
+    # Raporlar menüsüne tıklayınca direkt admin paneline gitsin
+    return RedirectResponse(url="/admin/global", status_code=302)
+    
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request, db: OrmSession = Depends(get_db)):
     user = current_user(request, db)
