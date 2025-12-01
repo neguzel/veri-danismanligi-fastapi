@@ -1471,6 +1471,7 @@ def admin_global(request: Request, db: OrmSession = Depends(get_db)):
             "last_uploads": last_uploads,
         },
     )
+    """
 @app.get("/dashboard/{upload_id}")
 def dashboard(upload_id: int, request: Request, db: Session = Depends(get_db)):
     df = load_dataframe_from_db_or_csv(upload_id, db)
@@ -1486,7 +1487,7 @@ def dashboard(upload_id: int, request: Request, db: Session = Depends(get_db)):
             "ai": ai_result,  # <-- BURADA TEK OBJE OLARAK GÖNDER
         },
     )
-
+"""
 @app.get("/download_pdf/{upload_id}")
 def download_pdf(upload_id: int, db: OrmSession = Depends(get_db)):
     upload = db.query(Upload).filter(Upload.id == upload_id).first()
