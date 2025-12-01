@@ -1176,75 +1176,8 @@ def index(request: Request, db: OrmSession = Depends(get_db)):
         {"request": request, "user": user},
     )
 
-"""
-@app.get("/register", response_class=HTMLResponse)
-def register_get(request: Request):
-    return templates.TemplateResponse("register.html", {"request": request, "error": None})
 
 
-@app.post("/register", response_class=HTMLResponse)
-def register_post(
-    request: Request,
-    full_name: str = Form(...),
-    phone: str = Form(...),
-    company_name: str = Form(""),
-    sector: str = Form(""),
-    email: str = Form(...),
-    password: str = Form(...),
-    db: OrmSession = Depends(get_db),
-):
-    existing = db.query(User).filter(User.email == email).first()
-    if existing:
-        return templates.TemplateResponse(
-            "register.html",
-            {"request": request, "error": "Bu e-posta ile zaten bir kullanıcı var."},
-        )
-
-    user = User(
-        email=email,
-        password=password,
-        is_admin=False,
-        full_name=full_name,
-        phone=phone,
-        company=company_name,
-        sector=sector,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    request.session["user_id"] = user.id
-    return RedirectResponse(url="/dashboard", status_code=302)
-
-"""
-"""
-@app.get("/login", response_class=HTMLResponse)
-def login_get(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
-
-
-@app.post("/login", response_class=HTMLResponse)
-def login_post(
-    request: Request,
-    email: str = Form(...),
-    password: str = Form(...),
-    db: OrmSession = Depends(get_db),
-):
-    user = (
-        db.query(User)
-        .filter(User.email == email, User.password == password)
-        .first()
-    )
-    if not user:
-        return templates.TemplateResponse(
-            "login.html",
-            {"request": request, "error": "Geçersiz e-posta veya şifre."},
-        )
-
-    request.session["user_id"] = user.id
-    return RedirectResponse(url="/dashboard", status_code=302)
-
-"""
 @app.get("/admin/login", response_class=HTMLResponse)
 def admin_login_get(request: Request):
     return templates.TemplateResponse("admin_login.html", {"request": request, "error": None})
@@ -1439,7 +1372,7 @@ async def upload_post(
         },
     )
 
-"""
+
 @app.get("/reports")
 def reports_redirect():
     # Raporlar menüsüne tıklayınca direkt admin paneline gitsin
@@ -1508,7 +1441,7 @@ def reports(request: Request, db: OrmSession = Depends(get_db)):
         },
     )
 
-"""
+
 @app.get("/admin", response_class=HTMLResponse)
 def admin_redirect():
     return RedirectResponse(url="/admin/global", status_code=302)
