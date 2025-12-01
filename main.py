@@ -12,6 +12,10 @@ import matplotlib.pyplot as plt
 import pandas as pd
 # Daha modern bir görünüm için global stil
 plt.style.use("ggplot")
+import matplotlib as mpl
+mpl.rcParams["font.family"] = "DejaVu Sans"
+mpl.rcParams["axes.unicode_minus"] = False
+
 
 
 from dotenv import load_dotenv
