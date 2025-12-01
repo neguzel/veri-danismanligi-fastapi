@@ -42,6 +42,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib import colors
 
 from openai import OpenAI
+from ai_analysis import ai_analyze_dataframe
 
 # -------------------------------------------------------------------
 # Ortam değişkenleri / yollar
