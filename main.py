@@ -12,10 +12,6 @@ import matplotlib.pyplot as plt
 import pandas as pd
 # Daha modern bir görünüm için global stil
 plt.style.use("ggplot")
-import matplotlib as mpl
-mpl.rcParams["font.family"] = "DejaVu Sans"
-mpl.rcParams["axes.unicode_minus"] = False
-
 
 
 from dotenv import load_dotenv
@@ -198,52 +194,145 @@ def current_user(request: Request, db: OrmSession) -> Optional[User]:
     return db.query(User).filter(User.id == user_id).first()
 
 
+
 # -------------------------------------------------------------------
-# AI analizi
+# Geliştirilmiş AI analizi
 # -------------------------------------------------------------------
 
 AI_SYSTEM_PROMPT = """
-Sen üst düzey bir veri bilimi danışmanısın.
-Tüm analizleri profesyonel, sade ve yöneticilere uygun Türkçe ile yaparsın.
+Sen üst düzey bir veri bilimi ve iş zekası danışmanısın.
+Analizlerini profesyonel, sade ve yöneticilere uygun Türkçe ile yaparsın.
 
-Kullanıcıdan veri setine ait özet bilgiler alacaksın.
-Bu bilgiler: satır/kolon sayıları, eksik veri oranı, varyans, alan tipleri, sektör vb. olabilir.
+## Görevin
+Kullanıcıdan aldığın veri seti özetine dayanarak:
+1. Verinin iş değerini ve potansiyelini değerlendir
+2. Sektöre özel içgörüler üret
+3. Uygulanabilir, somut öneriler sun
+4. Teknik detayları iş diline çevir
 
-Sana yüklediğim veri setlerinde ilgili verileri analiz et. Analizini yaparken seçilen sektör dinamiklerine göre yorumlar yap.
-(sağladığım datanın kalitesinden ziyade veriyi anlamlandır.) Bana vereceğin bilgiler ışığında ben firmalara çözüm önerileri sunmak istiyorum.
-“Uygulanabilir Model Önerileri” kısmında firma verilerin analizi sonucu hangi önerini yaparsa karlılık ve verimlilik arttırır bunu dikkate alacak.
-“İş / Veri Geliştirme Önerileri” kısmında da verdiğin bilgiler ışığında firma kendisine yol haritası çizecek.
+## Analiz Yaklaşımı
+- Veri KALİTESİNDEN çok veri İÇERİĞİNE odaklan
+- Sektör dinamiklerini merkeze al
+- ROI'yi artıracak öneriler sun
+- Hızlı kazanımlar ile uzun vadeli stratejileri dengele
 
-⛔ Kurallar:
-- ÇIKTI HER ZAMAN GEÇERLİ BİR JSON NESNESİ OLACAK.
-- Kod bloğu, markdown, ```json veya başka bir format KULLANMA.
-- JSON dışında TEK BİR KARAKTER BİLE yazma.
-- Değerler TÜRKÇE olacak, key isimleri İNGİLİZCE kalacak.
+⛔ Kritik Kurallar:
+- ÇIKTI MUTLAKA GEÇERLİ JSON OLMALI
+- Markdown, kod bloğu, ```json KULLANMA
+- JSON dışında hiçbir karakter yazma
+- Key'ler İngilizce, değerler Türkçe
 
-🎯 JSON şeması:
+🎯 JSON Şeması:
 
 {
-  "summary": "<genel kısa özet>",
-  "risks": ["<risk 1>", "<risk 2>", ...],
-  "features": ["<öneri 1>", "<öneri 2>", ...],
-  "ml_models": ["<model önerisi>", ...],
-  "recommendations": ["<aksiyon önerisi>", ...]
+  "summary": "2-3 cümlelik genel değerlendirme - veri setinin iş potansiyeli",
+  "key_insights": [
+    "İş değeri yaratan önemli bulgu 1",
+    "İş değeri yaratan önemli bulgu 2",
+    "İş değeri yaratan önemli bulgu 3"
+  ],
+  "risks": [
+    "Somut risk 1 ve etkisi",
+    "Somut risk 2 ve etkisi"
+  ],
+  "quick_wins": [
+    "Hemen uygulanabilecek eylem 1",
+    "Hemen uygulanabilecek eylem 2"
+  ],
+  "ml_models": [
+    "Model 1: [Model Adı] - [İş problemi] - [Beklenen fayda]",
+    "Model 2: [Model Adı] - [İş problemi] - [Beklenen fayda]"
+  ],
+  "data_strategy": [
+    "Veri zenginleştirme önerisi 1",
+    "Veri zenginleştirme önerisi 2"
+  ],
+  "roadmap": {
+    "phase_1": "0-3 ay: [Somut adımlar]",
+    "phase_2": "3-6 ay: [Somut adımlar]",
+    "phase_3": "6-12 ay: [Somut adımlar]"
+  }
 }
 
-Sektör bilgisi varsa (enerji, gıda, çelik, plastik, otomotiv, tekstil, sağlık, finans, lojistik, kimya vb.)
-yorumları sektöre uygunlaştır.
+## Sektöre Özel Yaklaşımlar:
+- **Enerji**: Tahmine dayalı bakım, optimizasyon, grid yönetimi
+- **Üretim**: Kalite kontrol, verimlilik, stok optimizasyonu
+- **Perakende**: Talep tahmini, müşteri segmentasyonu, fiyatlandırma
+- **Finans**: Risk skorlama, fraud detection, portföy optimizasyonu
+- **Sağlık**: Hasta risk analizi, kaynak planlama, operasyonel verimlilik
+- **Lojistik**: Rota optimizasyonu, talep tahmini, envanter yönetimi
 """
 
 
 def _join_list_or_str(value: Any) -> str:
+    """Liste veya string'i formatlı metne çevirir"""
     if value is None:
         return ""
     if isinstance(value, list):
-        return "\n".join(f"- {str(item)}" for item in value if str(item).strip())
+        return "\n".join(f"• {str(item)}" for item in value if str(item).strip())
+    if isinstance(value, dict):
+        return "\n".join(f"• {k}: {v}" for k, v in value.items() if str(v).strip())
     return str(value)
 
 
+def _extract_advanced_stats(df: pd.DataFrame) -> Dict[str, Any]:
+    """Gelişmiş istatistiksel özellikler çıkarır"""
+    stats = {}
+    
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    
+    if numeric_cols:
+        # Korelasyon analizi
+        corr_matrix = df[numeric_cols].corr()
+        high_corr = []
+        for i in range(len(corr_matrix.columns)):
+            for j in range(i + 1, len(corr_matrix.columns)):
+                if abs(corr_matrix.iloc[i, j]) > 0.7:
+                    high_corr.append(
+                        f"{corr_matrix.columns[i]} ↔ {corr_matrix.columns[j]} "
+                        f"(r={corr_matrix.iloc[i, j]:.2f})"
+                    )
+        stats["high_correlations"] = high_corr[:5]
+        
+        # Aykırı değer analizi
+        outlier_cols = []
+        for col in numeric_cols[:10]:  # İlk 10 kolon
+            Q1 = df[col].quantile(0.25)
+            Q3 = df[col].quantile(0.75)
+            IQR = Q3 - Q1
+            outliers = ((df[col] < (Q1 - 1.5 * IQR)) | (df[col] > (Q3 + 1.5 * IQR))).sum()
+            if outliers > 0:
+                outlier_cols.append(f"{col} ({outliers} aykırı değer)")
+        stats["outliers"] = outlier_cols[:5]
+        
+        # Değişkenlik katsayısı (CV)
+        cv_stats = []
+        for col in numeric_cols[:10]:
+            mean = df[col].mean()
+            std = df[col].std()
+            if mean != 0 and not pd.isna(std):
+                cv = (std / abs(mean)) * 100
+                if cv > 30:  # Yüksek değişkenlik
+                    cv_stats.append(f"{col} (CV={cv:.1f}%)")
+        stats["high_variability"] = cv_stats[:5]
+    
+    # Kategorik değişken analizi
+    cat_cols = df.select_dtypes(include=["object", "category", "bool"]).columns.tolist()
+    cardinality = []
+    for col in cat_cols[:10]:
+        unique = df[col].nunique()
+        total = len(df[col].dropna())
+        if total > 0:
+            ratio = (unique / total) * 100
+            cardinality.append(f"{col} ({unique} benzersiz, %{ratio:.1f})")
+    stats["cardinality"] = cardinality[:5]
+    
+    return stats
+
+
 def ai_analyze_dataframe(df: pd.DataFrame, sector: Optional[str] = None) -> Dict[str, str]:
+    """Geliştirilmiş AI destekli veri analizi"""
+    
     rows, cols = df.shape
     missing_total = int(df.isna().sum().sum())
     total_cells = max(rows * cols, 1)
@@ -251,55 +340,121 @@ def ai_analyze_dataframe(df: pd.DataFrame, sector: Optional[str] = None) -> Dict
 
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     cat_cols = df.select_dtypes(include=["object", "category", "bool"]).columns.tolist()
-
+    
+    # Gelişmiş istatistikler
+    advanced_stats = _extract_advanced_stats(df)
+    
+    # Varyans analizi
     high_var: List[str] = []
+    low_var: List[str] = []
     if numeric_cols:
-        var_series = df[numeric_cols].var(numeric_only=True).sort_values(ascending=False)
-        for c, v in var_series.head(5).items():
-            high_var.append(f"{c} (var={round(v, 2)})")
+        var_series = df[numeric_cols].var(numeric_only=True)
+        sorted_var = var_series.sort_values(ascending=False)
+        
+        for c, v in sorted_var.head(3).items():
+            if not pd.isna(v):
+                high_var.append(f"{c} (var={v:.2f})")
+        
+        for c, v in sorted_var.tail(3).items():
+            if not pd.isna(v) and v < 1:
+                low_var.append(f"{c} (var={v:.2f})")
+    
+    # Veri kalitesi skoru
+    quality_score = 100 - missing_ratio
+    if quality_score > 95:
+        quality_label = "Mükemmel"
+    elif quality_score > 85:
+        quality_label = "İyi"
+    elif quality_score > 70:
+        quality_label = "Orta"
+    else:
+        quality_label = "Düşük"
 
+    # Zenginleştirilmiş özet
     summary_text = f"""
-Dosya Özeti:
-- Sektör: {sector or 'belirtilmemiş'}
-- Satır sayısı: {rows}
-- Kolon sayısı: {cols}
-- Toplam eksik hücre: {missing_total} (%{missing_ratio})
-- Sayısal kolonlar: {', '.join(numeric_cols) if numeric_cols else '-'}
-- Kategorik kolonlar: {', '.join(cat_cols) if cat_cols else '-'}
-- En yüksek varyansa sahip alanlar: {', '.join(high_var) if high_var else '-'}
+## Veri Seti Profili
+**Sektör:** {sector or 'Belirtilmemiş'}
+**Boyut:** {rows:,} satır × {cols} kolon
+**Veri Kalitesi:** {quality_label} (%{quality_score:.1f} eksiksiz)
+
+### Temel Bilgiler
+- Toplam eksik hücre: {missing_total:,} (%{missing_ratio})
+- Sayısal değişkenler: {len(numeric_cols)} adet
+- Kategorik değişkenler: {len(cat_cols)} adet
+
+### İleri Analiz
+**Yüksek Varyans Alanları:**
+{chr(10).join(['- ' + v for v in high_var]) if high_var else '- Tespit edilmedi'}
+
+**Düşük Varyans (Sabit/Sabit-benzeri) Alanlar:**
+{chr(10).join(['- ' + v for v in low_var]) if low_var else '- Tespit edilmedi'}
+
+**Güçlü Korelasyonlar:**
+{chr(10).join(['- ' + c for c in advanced_stats.get('high_correlations', [])]) if advanced_stats.get('high_correlations') else '- Tespit edilmedi'}
+
+**Aykırı Değer Tespit:**
+{chr(10).join(['- ' + o for o in advanced_stats.get('outliers', [])]) if advanced_stats.get('outliers') else '- Önemli aykırı değer yok'}
+
+**Kategorik Kardinalite:**
+{chr(10).join(['- ' + c for c in advanced_stats.get('cardinality', [])]) if advanced_stats.get('cardinality') else '- Kategorik değişken yok'}
+
+### Veri Zenginliği
+- Yüksek değişkenlik gösteren alanlar: {len(advanced_stats.get('high_variability', []))} adet
+- Potansiyel feature engineering fırsatları: {'Var' if high_var or advanced_stats.get('high_correlations') else 'Sınırlı'}
 """.strip()
 
-    # API yoksa demo cevap
+    # API yoksa gelişmiş demo cevap
     if not client:
+        key_insights = [
+            f"Veri seti {rows:,} kayıt içermekte ve {quality_label.lower()} kalitede",
+            f"{len(numeric_cols)} sayısal değişken tahminleme modelleri için kullanılabilir",
+            "Gerçek zamanlı AI analizi için OpenAI API anahtarı gerekli"
+        ]
+        
         risks_list = [
-            "Gerçek zamanlı AI analizi devre dışı (API anahtarı tanımsız).",
-            "Eksik veri, aykırı değerler ve iş kuralları manuel olarak kontrol edilmelidir.",
+            f"Eksik veri oranı %{missing_ratio} - veri temizleme stratejisi uygulanmalı" if missing_ratio > 10 else "Veri kalitesi yüksek, minimum temizleme gerekli",
+            "Aykırı değerler iş kuralları ile doğrulanmalı" if advanced_stats.get('outliers') else "Aykırı değer riski düşük",
         ]
-        features_list = [
-            "Sayısal değişkenler için normalizasyon / standardizasyon.",
-            "Kategori alanları için etiket kodlama (one-hot veya target encoding).",
+        
+        quick_wins = [
+            "Eksik veri imputation stratejisi (ortalama/median/mod)",
+            "Yüksek korelasyonlu değişkenlerin birleştirilmesi" if advanced_stats.get('high_correlations') else "Özellik mühendisliği denemeleri",
         ]
+        
         models_list = [
-            "Temel regresyon / sınıflandırma modelleri (Linear Regression, Logistic Regression).",
-            "Ağaç tabanlı modeller (Random Forest, XGBoost, LightGBM).",
+            f"Regresyon Modelleri: {', '.join(numeric_cols[:3])} değişkenleri için tahminleme" if len(numeric_cols) >= 1 else "Sınıflandırma modelleri",
+            "Gradient Boosting (XGBoost/LightGBM): Yüksek doğruluk için",
+            "Random Forest: Özellik önem analizi için"
         ]
-        recs_list = [
-            "OpenAI API anahtarı eklendiğinde tam AI raporları otomatik üretilecektir.",
-            "Pilot proje için küçük bir veri alt kümesi ile ilk modelleme denemeleri yapılabilir.",
+        
+        data_strategy = [
+            "Harici veri kaynaklarıyla zenginleştirme (sektörel göstergeler)",
+            "Zaman serisi verisi varsa mevsimsellik analizi",
+            "Müşteri/ürün segmentasyonu için clustering"
         ]
+        
+        roadmap = {
+            "phase_1": "Veri temizleme, EDA, baseline model",
+            "phase_2": "Feature engineering, model optimizasyonu",
+            "phase_3": "Production deployment, monitoring"
+        }
+        
         return {
-            "summary": "Demo mod: OpenAI API anahtarı tanımlı olmadığı için yerel özet gösteriliyor.",
+            "summary": f"{quality_label} kalitede {rows:,} kayıtlık veri seti. {len(numeric_cols)} sayısal ve {len(cat_cols)} kategorik değişken içeriyor. OpenAI API ile detaylı analiz yapılabilir.",
+            "key_insights": _join_list_or_str(key_insights),
             "risks": _join_list_or_str(risks_list),
-            "features": _join_list_or_str(features_list),
+            "quick_wins": _join_list_or_str(quick_wins),
             "ml_models": _join_list_or_str(models_list),
-            "recommendations": _join_list_or_str(recs_list),
+            "data_strategy": _join_list_or_str(data_strategy),
+            "roadmap": _join_list_or_str(roadmap),
         }
 
+    # OpenAI API çağrısı
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             response_format={"type": "json_object"},
-            temperature=0.1,
+            temperature=0.2,  # Biraz daha yaratıcı
             messages=[
                 {"role": "system", "content": AI_SYSTEM_PROMPT},
                 {"role": "user", "content": summary_text},
@@ -311,23 +466,26 @@ Dosya Özeti:
 
         return {
             "summary": _join_list_or_str(data.get("summary")),
+            "key_insights": _join_list_or_str(data.get("key_insights")),
             "risks": _join_list_or_str(data.get("risks")),
-            "features": _join_list_or_str(data.get("features")),
+            "quick_wins": _join_list_or_str(data.get("quick_wins")),
             "ml_models": _join_list_or_str(data.get("ml_models")),
-            "recommendations": _join_list_or_str(data.get("recommendations")),
+            "data_strategy": _join_list_or_str(data.get("data_strategy")),
+            "roadmap": _join_list_or_str(data.get("roadmap")),
         }
 
     except Exception as e:
         err_type = type(e).__name__
         err_msg = str(e)
         return {
-            "summary": f"AI çalıştırılamadı ({err_type}).",
-            "risks": f"OpenAI hatası: {err_msg}",
-            "features": "-",
+            "summary": f"AI analizi tamamlanamadı ({err_type})",
+            "key_insights": "Hata nedeniyle içgörü üretilemedi",
+            "risks": f"API Hatası: {err_msg}",
+            "quick_wins": "Manuel analiz önerilir",
             "ml_models": "-",
-            "recommendations": "-",
+            "data_strategy": "-",
+            "roadmap": "-",
         }
-
 
 # -------------------------------------------------------------------
 # Dosya ismi sanitizasyonu
@@ -992,7 +1150,7 @@ def index(request: Request, db: OrmSession = Depends(get_db)):
         {"request": request, "user": user},
     )
 
-
+"""
 @app.get("/register", response_class=HTMLResponse)
 def register_get(request: Request):
     return templates.TemplateResponse("register.html", {"request": request, "error": None})
@@ -1032,7 +1190,8 @@ def register_post(
     request.session["user_id"] = user.id
     return RedirectResponse(url="/dashboard", status_code=302)
 
-
+"""
+"""
 @app.get("/login", response_class=HTMLResponse)
 def login_get(request: Request):
     return templates.TemplateResponse("login.html", {"request": request, "error": None})
@@ -1059,7 +1218,7 @@ def login_post(
     request.session["user_id"] = user.id
     return RedirectResponse(url="/dashboard", status_code=302)
 
-
+"""
 @app.get("/admin/login", response_class=HTMLResponse)
 def admin_login_get(request: Request):
     return templates.TemplateResponse("admin_login.html", {"request": request, "error": None})
@@ -1254,7 +1413,7 @@ async def upload_post(
         },
     )
 
-
+"""
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request, db: OrmSession = Depends(get_db)):
     user = current_user(request, db)
@@ -1318,7 +1477,7 @@ def reports(request: Request, db: OrmSession = Depends(get_db)):
         },
     )
 
-
+"""
 @app.get("/admin", response_class=HTMLResponse)
 def admin_redirect():
     return RedirectResponse(url="/admin/global", status_code=302)
