@@ -1420,14 +1420,14 @@ def dashboard(request: Request, db: OrmSession = Depends(get_db)):
 
 
 @app.get("/reports", response_class=HTMLResponse)
-def reports(request: Request, db: OrmSession = Depends(get_db)):
+def admin_reports(request: Request, db: OrmSession = Depends(get_db)):
     user = current_user(request, db)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    if not user or not user.is_admin:
+        # admin değilse veya login yoksa admin login sayfasına at
+        return RedirectResponse(url="/admin/login", status_code=302)
 
     uploads = (
         db.query(Upload)
-        .filter(Upload.user_id == user.id)
         .order_by(Upload.created_at.desc())
         .all()
     )
@@ -1440,7 +1440,6 @@ def reports(request: Request, db: OrmSession = Depends(get_db)):
             "uploads": uploads,
         },
     )
-
 
 @app.get("/admin", response_class=HTMLResponse)
 def admin_redirect():
@@ -1472,7 +1471,6 @@ def admin_global(request: Request, db: OrmSession = Depends(get_db)):
             "last_uploads": last_uploads,
         },
     )
-
 
 @app.get("/download_pdf/{upload_id}")
 def download_pdf(upload_id: int, db: OrmSession = Depends(get_db)):
