@@ -193,8 +193,6 @@ def current_user(request: Request, db: OrmSession) -> Optional[User]:
         return None
     return db.query(User).filter(User.id == user_id).first()
 
-
-
 # -------------------------------------------------------------------
 # Geliştirilmiş AI analizi
 # -------------------------------------------------------------------
@@ -486,6 +484,7 @@ def ai_analyze_dataframe(df: pd.DataFrame, sector: Optional[str] = None) -> Dict
             "data_strategy": "-",
             "roadmap": "-",
         }
+
 
 # -------------------------------------------------------------------
 # Dosya ismi sanitizasyonu
@@ -1469,6 +1468,21 @@ def admin_global(request: Request, db: OrmSession = Depends(get_db)):
             "total_users": total_users,
             "total_uploads": total_uploads,
             "last_uploads": last_uploads,
+        },
+    )
+@app.get("/dashboard/{upload_id}")
+def dashboard(upload_id: int, request: Request, db: Session = Depends(get_db)):
+    df = load_dataframe_from_db_or_csv(upload_id, db)
+    sector = "Üretim"  # veya kullanıcının seçtiği sektöre göre
+
+    ai_result = ai_analyze_dataframe(df, sector=sector)
+
+    return templates.TemplateResponse(
+        "dashboard.html",
+        {
+            "request": request,
+            "upload_id": upload_id,
+            "ai": ai_result,  # <-- BURADA TEK OBJE OLARAK GÖNDER
         },
     )
 
