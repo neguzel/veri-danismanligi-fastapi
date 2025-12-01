@@ -1138,6 +1138,32 @@ def generate_pdf_report(
 
     c.save()
 
+# --- Admin kullanıcısını otomatik oluşturma ---
+
+def init_admin_user():
+    db = SessionLocal()
+    try:
+        admin = db.query(User).filter(User.is_admin == True).first()
+        if admin:
+            return  # zaten var
+        admin = User(
+            full_name="Sistem Admin",
+            email="admin@veridanismanligi.com",
+            password="Admin123!",   # Şimdilik düz şifre
+            phone=None,
+            company="Veri Danışmanlığı",
+            sector=None,
+            is_admin=True,
+        )
+        db.add(admin)
+        db.commit()
+        print("✅ Varsayılan admin oluşturuldu (Railway veya lokal): admin@veridanismanligi.com / Admin123!")
+    finally:
+        db.close()
+@app.on_event("startup")
+def on_startup():
+    Base.metadata.create_all(bind=engine)
+    init_admin_user()
 # -------------------------------------------------------------------
 # ROUTES
 # -------------------------------------------------------------------
