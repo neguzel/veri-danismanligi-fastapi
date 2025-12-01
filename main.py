@@ -76,16 +76,23 @@ FONT_CANDIDATES = [
     "C:/Windows/Fonts/arial.ttf",
 ]
 
-for path in FONT_CANDIDATES:
-    if not path:
-        continue
-    try:
+def register_turkish_font():
+    """Türkçe karakter desteği olan fontu kaydetmeye çalışır."""
+    global PDF_FONT
+    for path in filter(None, FONT_CANDIDATES):  # None olanları otomatik atla
         if os.path.exists(path):
-            pdfmetrics.registerFont(TTFont("AppTR", path))
-            PDF_FONT = "AppTR"
-            break
-    except Exception:
-        continue
+            try:
+                pdfmetrics.registerFont(TTFont("AppTR", path))
+                PDF_FONT = "AppTR"
+                print(f"PDF fontu başarıyla yüklendi: {path}")
+                return
+            except Exception as e:
+                print(f"Font yüklenemedi ({path}): {e}")
+    print(f"Varsayılan font kullanılacak: {PDF_FONT}")
+
+# Kullanım
+register_turkish_font()
+
 
 
 # -------------------------------------------------------------------
