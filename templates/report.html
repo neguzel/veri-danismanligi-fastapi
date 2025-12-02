@@ -124,87 +124,130 @@
   </div>
 </div>
 
-<!-- AI Özet ve Riskler / Fırsatlar -->
+{% if ai %}
+<!-- AI Genel Analiz – Yapay Zekâ Destekli Özet -->
 <div class="vd-section">
   <div class="vd-grid vd-grid-2">
-    <div class="vd-card">
+    <section class="vd-card">
       <div class="vd-card-header">
-        <h2 class="vd-card-title">AI Özet</h2>
+        <h2 class="vd-card-title">AI Genel Değerlendirme</h2>
       </div>
       <div class="vd-card-body">
-        {% if analysis.ai_summary %}
-          <p>{{ analysis.ai_summary }}</p>
-        {% elif ai_comment %}
-          <p>{{ ai_comment }}</p>
-        {% else %}
-          <p>Veri setine ilişkin özet bilgisi bulunamadı.</p>
-        {% endif %}
+        <p>{{ ai.summary }}</p>
       </div>
-    </div>
+    </section>
 
-    <div class="vd-card">
+    <section class="vd-card">
       <div class="vd-card-header">
-        <h2 class="vd-card-title">Riskler ve Dikkat Noktaları</h2>
+        <h3 class="vd-card-title">Öne Çıkan İçgörüler</h3>
       </div>
       <div class="vd-card-body">
-        {% if analysis.ai_risks %}
-          <p>{{ analysis.ai_risks }}</p>
-        {% else %}
-          <p>Belirgin bir risk analizi üretilmedi veya veri kısıtlı.</p>
-        {% endif %}
+        <ul>
+          {% if ai.key_insights %}
+            {% for item in ai.key_insights %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          {% else %}
+            <li>Öne çıkan içgörü üretilemedi.</li>
+          {% endif %}
+        </ul>
       </div>
-    </div>
+    </section>
   </div>
 </div>
 
-<!-- Öne çıkan alanlar & Modeller -->
 <div class="vd-section">
   <div class="vd-grid vd-grid-2">
-    <div class="vd-card">
+    <section class="vd-card">
       <div class="vd-card-header">
-        <h2 class="vd-card-title">Öne Çıkan Değişkenler</h2>
+        <h3 class="vd-card-title">Riskler</h3>
       </div>
       <div class="vd-card-body">
-        {% if analysis.ai_features %}
-          <p>{{ analysis.ai_features }}</p>
-        {% else %}
-          <p>Öne çıkan özellikler hesaplanmadı.</p>
-        {% endif %}
+        <ul>
+          {% if ai.risks %}
+            {% for item in ai.risks %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          {% else %}
+            <li>Belirgin bir risk analizi üretilemedi veya veri kısıtlı.</li>
+          {% endif %}
+        </ul>
       </div>
-    </div>
+    </section>
 
-    <div class="vd-card">
+    <section class="vd-card">
       <div class="vd-card-header">
-        <h2 class="vd-card-title">Uygulanabilir Model Önerileri</h2>
+        <h3 class="vd-card-title">Hızlı Kazanımlar</h3>
       </div>
       <div class="vd-card-body">
-        {% if analysis.ai_models %}
-          <p>{{ analysis.ai_models }}</p>
-        {% else %}
-          <p>Makine öğrenmesi modeli önerisi bulunamadı.</p>
-        {% endif %}
+        <ul>
+          {% if ai.quick_wins %}
+            {% for item in ai.quick_wins %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          {% else %}
+            <li>Kısa vadeli hızlı kazanım önerisi üretilemedi.</li>
+          {% endif %}
+        </ul>
       </div>
-    </div>
+    </section>
   </div>
 </div>
 
-<!-- Öneriler -->
 <div class="vd-section">
-  <div class="vd-card">
+  <div class="vd-grid vd-grid-2">
+    <section class="vd-card">
+      <div class="vd-card-header">
+        <h3 class="vd-card-title">Önerilen Modeller</h3>
+      </div>
+      <div class="vd-card-body">
+        <ul>
+          {% if ai.ml_models %}
+            {% for item in ai.ml_models %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          {% else %}
+            <li>Makine öğrenmesi modeli önerisi bulunamadı.</li>
+          {% endif %}
+        </ul>
+      </div>
+    </section>
+
+    <section class="vd-card">
+      <div class="vd-card-header">
+        <h3 class="vd-card-title">Veri Stratejisi</h3>
+      </div>
+      <div class="vd-card-body">
+        <ul>
+          {% if ai.data_strategy %}
+            {% for item in ai.data_strategy %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          {% else %}
+            <li>Veri stratejisi için net aksiyon önerisi üretilemedi.</li>
+          {% endif %}
+        </ul>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="vd-section">
+  <section class="vd-card">
     <div class="vd-card-header">
-      <h2 class="vd-card-title">İş / Veri Geliştirme Önerileri</h2>
+      <h3 class="vd-card-title">Yol Haritası</h3>
     </div>
     <div class="vd-card-body">
-      {% if analysis.ai_recommendations %}
-        <p>{{ analysis.ai_recommendations }}</p>
-      {% elif ai_report %}
-        <p>{{ ai_report }}</p>
-      {% else %}
-        <p>Bu veri seti için spesifik öneri üretilmedi.</p>
-      {% endif %}
+      <ol>
+        <li>{{ ai.roadmap.phase_1 }}</li>
+        <li>{{ ai.roadmap.phase_2 }}</li>
+        <li>{{ ai.roadmap.phase_3 }}</li>
+      </ol>
     </div>
-  </div>
+  </section>
 </div>
+{% endif %}
+
 
 <!-- Grafikler -->
 <div class="vd-section">
