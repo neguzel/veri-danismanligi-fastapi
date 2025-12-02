@@ -1535,7 +1535,7 @@ async def upload_post(
         "ai_recommendations": ai_recommendations,
     }
 
-   return templates.TemplateResponse(
+    return templates.TemplateResponse(
     "report.html",
     {
         "request": request,
