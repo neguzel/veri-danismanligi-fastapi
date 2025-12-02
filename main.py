@@ -1554,7 +1554,7 @@ async def upload_post(
         "contact_sector": sector,
         "upload_id": upload.id,
     },
-)
+    )
 
 
 @app.get("/reports")
