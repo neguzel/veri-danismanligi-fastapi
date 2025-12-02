@@ -1,58 +1,62 @@
-<section class="card">
-  <h2>AI Genel Değerlendirme</h2>
-  <p>{{ ai.summary }}</p>
-</section>
+{% if ai %}
+  <section class="card">
+    <h2>AI Genel Değerlendirme</h2>
+    <p>{{ ai.summary }}</p>
+  </section>
 
-<section class="card">
-  <h3>Öne Çıkan İçgörüler</h3>
-  <ul>
-    {% for item in ai.key_insights %}
-      <li>{{ item }}</li>
-    {% endfor %}
-  </ul>
-</section>
+  <section class="card">
+    <h3>Öne Çıkan İçgörüler</h3>
+    <ul>
+      {% for item in ai.key_insights %}
+        <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+  </section>
 
-<section class="card">
-  <h3>Riskler</h3>
-  <ul>
-    {% for item in ai.risks %}
-      <li>{{ item }}</li>
-    {% endfor %}
-  </ul>
-</section>
+  <section class="card">
+    <h3>Riskler</h3>
+    <ul>
+      {% for item in ai.risks %}
+        <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+  </section>
 
-<section class="card">
-  <h3>Hızlı Kazanımlar</h3>
-  <ul>
-    {% for item in ai.quick_wins %}
-      <li>{{ item }}</li>
-    {% endfor %}
-  </ul>
-</section>
+  <section class="card">
+    <h3>Hızlı Kazanımlar</h3>
+    <ul>
+      {% for item in ai.quick_wins %}
+        <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+  </section>
 
-<section class="card">
-  <h3>Önerilen Modeller</h3>
-  <ul>
-    {% for item in ai.ml_models %}
-      <li>{{ item }}</li>
-    {% endfor %}
-  </ul>
-</section>
+  <section class="card">
+    <h3>Önerilen Modeller</h3>
+    <ul>
+      {% for item in ai.ml_models %}
+        <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+  </section>
 
-<section class="card">
-  <h3>Veri Stratejisi</h3>
-  <ul>
-    {% for item in ai.data_strategy %}
-      <li>{{ item }}</li>
-    {% endfor %}
-  </ul>
-</section>
+  <section class="card">
+    <h3>Veri Stratejisi</h3>
+    <ul>
+      {% for item in ai.data_strategy %}
+        <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+  </section>
 
-<section class="card">
-  <h3>Yol Haritası</h3>
-  <ol>
-    <li>{{ ai.roadmap.phase_1 }}</li>
-    <li>{{ ai.roadmap.phase_2 }}</li>
-    <li>{{ ai.roadmap.phase_3 }}</li>
-  </ol>
-</section>
+  <section class="card">
+    <h3>Yol Haritası</h3>
+    <ol>
+      <li>{{ ai.roadmap.phase_1 }}</li>
+      <li>{{ ai.roadmap.phase_2 }}</li>
+      <li>{{ ai.roadmap.phase_3 }}</li>
+    </ol>
+  </section>
+{% else %}
+  <p>Henüz bu gösterge paneli için yapay zekâ analizi oluşturulmadı.</p>
+{% endif %}
