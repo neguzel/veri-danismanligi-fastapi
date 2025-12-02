@@ -912,9 +912,6 @@ def render_chart_from_spec(
         plt.close(fig)
         return None
 
-
-
-
 def render_chart_from_spec(
     df: pd.DataFrame,
     upload_id: int,
@@ -923,26 +920,25 @@ def render_chart_from_spec(
     """
     AI'den gelen grafik tanımını kullanarak PNG üretir.
     - Tüm grafikler aynı boyutta (8x4.5 inç)
-    - Çok yoğun verilerde daha okunur grafikler üretmeye çalışır.
+    - Eksik kolon / veri durumunda zarif fallback
+    - Çok yoğun verilerde downsample / gruplayarak daha okunur grafik üretir
     """
-    chart_type = spec.get("type")
-    cols = spec.get("columns") or []
+    chart_type = spec["type"]
+    cols = spec["columns"]
     title = spec.get("title") or "Grafik"
     chart_id = spec.get("id") or "chart"
+    title_lower = title.lower()
 
     # Geçersiz kolonları filtrele
-    cols = [c for c in cols if c in df.columns]
-    if not cols:
+    valid_cols = [c for c in cols if c in df.columns]
+    if not valid_cols:
         return None
 
     fig, ax = plt.subplots(figsize=(8, 4.5))
 
     try:
-        # -------------------------
-        # 1) Histogram
-        # -------------------------
         if chart_type == "hist":
-            col = cols[0]
+            col = valid_cols[0]
             series = df[col].dropna()
             if series.empty:
                 ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
@@ -951,60 +947,40 @@ def render_chart_from_spec(
                 ax.set_xlabel(col)
                 ax.set_ylabel("Frekans")
 
-        # -------------------------
-        # 2) Çizgi Grafik
-        # -------------------------
         elif chart_type == "line":
-            if len(cols) == 1:
-                # Tek değişken: indexe göre çiz
-                col = cols[0]
-                series = df[col].dropna().reset_index(drop=True)
-                if series.empty:
-                    ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
-                else:
-                    ax.plot(series.index, series.values, marker="o", linewidth=1.2)
-                    ax.set_xlabel("Index")
-                    ax.set_ylabel(col)
-            else:
-                # İki kolon: x ve y
-                x, y = cols[0], cols[1]
+            # Çoğunlukla x: zaman/yıl, y: metrik gibi düşünüyoruz
+            if len(valid_cols) >= 2:
+                x, y = valid_cols[0], valid_cols[1]
                 tmp = df[[x, y]].dropna()
                 if tmp.empty:
                     ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
                 else:
-                    # Eğer başlıkta "ortalama" geçiyorsa veya çok satır varsa,
-                    # x'e göre gruplayıp ortalama çizelim (ör: Yıla göre ortalama fiyat)
-                    lower_title = title.lower()
-                    too_many_points = len(tmp) > 500
-
-                    if "ortalama" in lower_title or too_many_points:
-                        agg = (
+                    # Eğer başlıkta "ortalama" geçiyorsa → x'e göre grupla, ortalama al
+                    # (ör: Yıllara göre ortalama fiyat)
+                    if "ortalama" in title_lower and tmp[x].nunique() <= 200:
+                        grouped = (
                             tmp.groupby(x)[y]
                             .mean()
                             .reset_index()
                             .sort_values(x)
                         )
-                        ax.plot(agg[x], agg[y], marker="o", linewidth=1.6)
-                        ax.set_ylabel(f"{y} (ortalama)")
+                        ax.plot(grouped[x], grouped[y], marker="o", linewidth=1.6)
                     else:
-                        # Ham veriyi çiz ama daha ince ve saydam
-                        ax.plot(
-                            tmp[x],
-                            tmp[y],
-                            marker="o",
-                            linewidth=0.8,
-                            alpha=0.3,
-                        )
-                        ax.set_ylabel(y)
+                        # Çok satır varsa downsample et ki duvar olmasın
+                        tmp = tmp.sort_values(x)
+                        if len(tmp) > 1000:
+                            step = max(1, len(tmp) // 1000)
+                            tmp = tmp.iloc[::step]
+                        ax.plot(tmp[x], tmp[y], linewidth=1.2)
 
                     ax.set_xlabel(x)
+                    ax.set_ylabel(y)
+            else:
+                ax.text(0.5, 0.5, "Yeterli kolon yok", ha="center", va="center")
 
-        # -------------------------
-        # 3) Bar Grafik
-        # -------------------------
         elif chart_type == "bar":
-            if len(cols) >= 2:
-                cat_col, val_col = cols[0], cols[1]
+            if len(valid_cols) >= 2:
+                cat_col, val_col = valid_cols[0], valid_cols[1]
                 tmp = df[[cat_col, val_col]].dropna()
                 if tmp.empty:
                     ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
@@ -1020,52 +996,45 @@ def render_chart_from_spec(
                     ax.set_ylabel(f"{val_col} (ortalama)")
                     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
             else:
-                # Tek kolon: kategori sayımı
-                col = cols[0]
-                s = df[col].dropna().value_counts()
-                if s.empty:
+                col = valid_cols[0]
+                series = df[col].dropna()
+                if series.empty:
                     ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
                 else:
-                    s = s.head(15)
-                    ax.bar(s.index.astype(str), s.values)
+                    ax.bar(series.index.astype(str), series.values)
                     ax.set_xlabel(col)
-                    ax.set_ylabel("Frekans")
                     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
-        # -------------------------
-        # 4) Pasta Grafik
-        # -------------------------
         elif chart_type == "pie":
-            col = cols[0]
+            col = valid_cols[0]
             s = df[col].dropna().value_counts()
             if s.empty:
                 ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
             else:
-                s = s.head(8)
-                if len(s) > 6:
-                    top = s[:5]
-                    other = s[5:].sum()
-                    s = top.append(pd.Series({"Diğer": other}))
-                ax.pie(s.values, labels=s.index.astype(str), autopct="%1.1f%%")
-                ax.set_ylabel("")
+                top = s.head(7)
+                other = s.iloc[7:].sum()
+                if other > 0:
+                    top["Diğer"] = other
+                ax.pie(top.values, labels=top.index.astype(str), autopct="%1.1f%%")
+                ax.axis("equal")
 
-        # -------------------------
-        # 5) Boxplot
-        # -------------------------
         elif chart_type == "box":
-            selected = [c for c in cols if c in df.columns]
-            if selected:
-                df[selected].dropna().boxplot(ax=ax)
-                plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+            num_cols = df[valid_cols].select_dtypes(include="number")
+            if num_cols.shape[1] == 0:
+                ax.text(0.5, 0.5, "Sayısal kolon yok", ha="center", va="center")
             else:
-                ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
+                ax.boxplot(
+                    [num_cols[c].dropna() for c in num_cols.columns],
+                    labels=num_cols.columns,
+                    vert=True,
+                )
+                plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
-        # -------------------------
-        # 6) Korelasyon Heatmap
-        # -------------------------
         elif chart_type == "heatmap":
             numeric = df.select_dtypes(include="number")
-            if numeric.shape[1] >= 2:
+            if numeric.shape[1] < 2:
+                ax.text(0.5, 0.5, "Yeterli sayısal kolon yok", ha="center", va="center")
+            else:
                 corr = numeric.corr()
                 im = ax.imshow(corr.values, interpolation="nearest")
                 fig.colorbar(im, ax=ax)
@@ -1073,19 +1042,20 @@ def render_chart_from_spec(
                 ax.set_xticklabels(corr.columns, rotation=45, ha="right")
                 ax.set_yticks(range(len(corr.columns)))
                 ax.set_yticklabels(corr.columns)
-            else:
-                ax.text(
-                    0.5,
-                    0.5,
-                    "Korelasyon için yeterli sayısal kolon yok",
-                    ha="center",
-                    va="center",
-                )
+
         else:
-            # Bilinmeyen tip → info yaz
-            ax.text(0.5, 0.5, f"Bilinmeyen grafik tipi: {chart_type}", ha="center", va="center")
+            # Tanınmayan tip → basit histogram fallback
+            col = valid_cols[0]
+            series = df[col].dropna()
+            if series.empty:
+                ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
+            else:
+                ax.hist(series, bins=30)
+                ax.set_xlabel(col)
+                ax.set_ylabel("Frekans")
 
         ax.set_title(title)
+        ax.grid(True, alpha=0.3)
         fig.tight_layout()
 
         safe_id = safe_filename_part(chart_id)
@@ -1099,6 +1069,8 @@ def render_chart_from_spec(
     except Exception:
         plt.close(fig)
         return None
+
+
 
 
 def build_chart_cards(charts: Dict[str, Any]) -> List[Dict[str, Any]]:
