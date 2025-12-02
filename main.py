@@ -698,10 +698,8 @@ def ai_genel_analiz_uret(df: pd.DataFrame) -> dict:
     Veri seti üzerinden genel değerlendirme, içgörüler, riskler, quick wins,
     önerilen ML modelleri, veri stratejisi ve yol haritası döndüren AI fonksiyonu.
     """
-    prompt = f"""
-Aşağıdaki veri seti kolon isimlerine ve özet istatistiklere bakarak,
-KISA VE NET olacak şekilde bir veri danışmanlığı değerlendirmesi üret.
-
+    # JSON şablonunu f-string DEĞİL, normal string olarak yazıyoruz
+    json_template = """
 Lütfen aşağıdaki formatta JSON döndür:
 
 {
@@ -717,19 +715,25 @@ Lütfen aşağıdaki formatta JSON döndür:
     "phase_3": "..."
   }
 }
-
-VERİ ÖZETİ:
-Kolonlar: {list(df.columns)}
-Sayısal kolonların kısa özetleri:
-{df.describe().to_string()}
 """
+
+    # Buradan sonrası için f-string kullanıyoruz
+    prompt = (
+        "Aşağıdaki veri seti kolon isimlerine ve özet istatistiklere bakarak, "
+        "KISA VE NET olacak şekilde bir veri danışmanlığı değerlendirmesi üret.\n\n"
+        + json_template
+        + "\n\nVERİ ÖZETİ:\n"
+        + f"Kolonlar: {list(df.columns)}\n\n"
+        + "Sayısal kolonların kısa özetleri:\n"
+        + df.describe(include="all").to_string()
+    )
 
     try:
         resp = client.responses.create(
             model="gpt-4.1-mini",
             input=prompt,
             max_output_tokens=500,
-            response_format="json"  # JSON olarak dönmesini garanti ediyoruz
+            response_format="json",  # JSON olarak dönmesini istiyoruz
         )
         return resp.output[0].content[0].json
     except Exception:
@@ -744,9 +748,10 @@ Sayısal kolonların kısa özetleri:
             "roadmap": {
                 "phase_1": "Hazırlık yapılamadı.",
                 "phase_2": "Analiz tamamlanamadı.",
-                "phase_3": "Geliştirme adımı oluşturulamadı."
-            }
+                "phase_3": "Geliştirme adımı oluşturulamadı.",
+            },
         }
+
 
 def render_chart_from_spec(
     df: pd.DataFrame,
@@ -1343,6 +1348,7 @@ def init_admin_user():
 def on_startup():
     Base.metadata.create_all(bind=engine)
     init_admin_user()
+
 # -------------------------------------------------------------------
 # ROUTES
 # -------------------------------------------------------------------
@@ -1356,10 +1362,12 @@ def index(request: Request, db: OrmSession = Depends(get_db)):
     )
 
 
-
 @app.get("/admin/login", response_class=HTMLResponse)
 def admin_login_get(request: Request):
-    return templates.TemplateResponse("admin_login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(
+        "admin_login.html",
+        {"request": request, "error": None},
+    )
 
 
 @app.post("/admin/login", response_class=HTMLResponse)
@@ -1371,7 +1379,11 @@ def admin_login_post(
 ):
     user = (
         db.query(User)
-        .filter(User.email == email, User.password == password, User.is_admin == True)
+        .filter(
+            User.email == email,
+            User.password == password,
+            User.is_admin == True,
+        )
         .first()
     )
     if not user:
@@ -1468,7 +1480,7 @@ async def upload_post(
     db.commit()
     db.refresh(upload)
 
-    # AI analiz
+    # AI analiz (satır bazlı özet, risk, özellik, model, öneri)
     ai_insights = ai_analyze_dataframe(df, sector=sector)
     ai_summary = ai_insights.get("summary", "")
     ai_risks = ai_insights.get("risks", "")
@@ -1487,9 +1499,9 @@ async def upload_post(
     # Grafikler
     charts_raw = generate_charts(df, upload_id=upload.id)
     chart_cards = build_chart_cards(charts_raw)
-    # 🔥 AI GENEL ANALİZ – (summary, insights, risks, quick wins, roadmap vb.)
-    ai_analysis = ai_genel_analiz_uret(df)
 
+    # AI genel analiz (summary, insights, risks, quick_wins, models, data_strategy, roadmap)
+    ai_analysis = ai_genel_analiz_uret(df)
 
     ANALYSIS_CACHE[upload.id] = {
         "file_name": file.filename,
@@ -1513,7 +1525,7 @@ async def upload_post(
         "contact_phone": phone,
         "contact_email": email,
         "contact_sector": sector,
-         "ai": ai_analysis,
+        "ai": ai_analysis,
     }
 
     request.session["last_upload_id"] = upload.id
@@ -1536,24 +1548,24 @@ async def upload_post(
     }
 
     return templates.TemplateResponse(
-    "report.html",
-    {
-        "request": request,
-        "user": None,
-        "analysis": analysis_ctx,
-        "charts": chart_cards,
-        "ai_comment": ai_summary,
-        "ai_report": ai_recommendations,
-        "ai": ai_analysis,   # ⭐ ŞU SATIR EKLENİYOR
-        "company": company_label,
-        "file_name": file.filename,
-        "file_type": file_type,
-        "contact_name": full_name,
-        "contact_phone": phone,
-        "contact_email": email,
-        "contact_sector": sector,
-        "upload_id": upload.id,
-    },
+        "report.html",
+        {
+            "request": request,
+            "user": None,
+            "analysis": analysis_ctx,
+            "charts": chart_cards,
+            "ai_comment": ai_summary,
+            "ai_report": ai_recommendations,
+            "ai": ai_analysis,
+            "company": company_label,
+            "file_name": file.filename,
+            "file_type": file_type,
+            "contact_name": full_name,
+            "contact_phone": phone,
+            "contact_email": email,
+            "contact_sector": sector,
+            "upload_id": upload.id,
+        },
     )
 
 
@@ -1561,7 +1573,8 @@ async def upload_post(
 def reports_redirect():
     # Raporlar menüsüne tıklayınca direkt admin paneline gitsin
     return RedirectResponse(url="/admin/global", status_code=302)
-    
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request, db: OrmSession = Depends(get_db)):
     user = current_user(request, db)
@@ -1577,7 +1590,7 @@ def dashboard(request: Request, db: OrmSession = Depends(get_db)):
 
     data = None
     charts: List[Dict[str, Any]] = []
-    ai = None   # ⭐ yeni
+    ai = None
 
     last_upload_id = request.session.get("last_upload_id")
     if last_upload_id and last_upload_id in ANALYSIS_CACHE:
@@ -1591,7 +1604,7 @@ def dashboard(request: Request, db: OrmSession = Depends(get_db)):
             "ai_details": cached.get("ai_recommendations", ""),
         }
         charts = cached.get("charts", [])
-        ai = cached.get("ai")   # ⭐ AI genel analiz objesi
+        ai = cached.get("ai")
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -1601,7 +1614,7 @@ def dashboard(request: Request, db: OrmSession = Depends(get_db)):
             "uploads": uploads,
             "data": data,
             "charts": charts,
-            "ai": ai,          # ⭐ dashboard.html'de kullanacaksın
+            "ai": ai,
         },
     )
 
@@ -1627,6 +1640,7 @@ def admin_reports(request: Request, db: OrmSession = Depends(get_db)):
             "uploads": uploads,
         },
     )
+
 
 @app.get("/admin", response_class=HTMLResponse)
 def admin_redirect():
@@ -1658,6 +1672,7 @@ def admin_global(request: Request, db: OrmSession = Depends(get_db)):
             "last_uploads": last_uploads,
         },
     )
+
 
 @app.get("/download_pdf/{upload_id}")
 def download_pdf(upload_id: int, db: OrmSession = Depends(get_db)):
@@ -1735,3 +1750,4 @@ def download_pdf(upload_id: int, db: OrmSession = Depends(get_db)):
         media_type="application/pdf",
         filename=f"veri_raporu_{upload_id}.pdf",
     )
+
