@@ -1511,6 +1511,7 @@ async def upload_post(
         "contact_phone": phone,
         "contact_email": email,
         "contact_sector": sector,
+         "ai": ai_analysis,
     }
 
     request.session["last_upload_id"] = upload.id
@@ -1574,6 +1575,7 @@ def dashboard(request: Request, db: OrmSession = Depends(get_db)):
 
     data = None
     charts: List[Dict[str, Any]] = []
+    ai = None   # ⭐ yeni
 
     last_upload_id = request.session.get("last_upload_id")
     if last_upload_id and last_upload_id in ANALYSIS_CACHE:
@@ -1587,6 +1589,7 @@ def dashboard(request: Request, db: OrmSession = Depends(get_db)):
             "ai_details": cached.get("ai_recommendations", ""),
         }
         charts = cached.get("charts", [])
+        ai = cached.get("ai")   # ⭐ AI genel analiz objesi
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -1596,6 +1599,7 @@ def dashboard(request: Request, db: OrmSession = Depends(get_db)):
             "uploads": uploads,
             "data": data,
             "charts": charts,
+            "ai": ai,          # ⭐ dashboard.html'de kullanacaksın
         },
     )
 
