@@ -507,6 +507,103 @@ def safe_filename_part(value: str, max_len: int = 80) -> str:
 # -------------------------------------------------------------------
 # AI destekli grafik önerisi
 # -------------------------------------------------------------------
+def ai_grafik_yorumu_uret(df: pd.DataFrame, spec: Dict[str, Any]) -> str:
+    """
+    Grafik spesifikasyonuna (kolonlar + tip) göre kısa AI yorumu üretir.
+    Yorum 1-2 cümle ve Türkçe, grafiğin altına yazılacak şekilde tasarlanmıştır.
+    """
+    # Hangi kolonu yorumlayacağımıza karar verelim
+    cols = spec.get("columns") or []
+    cols = [c for c in cols if c in df.columns]
+
+    if not cols:
+        return ""
+
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+
+    y_col = None
+    # Önce spesifikasyonda geçen sayısal kolonlara bak
+    for c in reversed(cols):  # genelde son kolon metrik oluyor
+        if c in numeric_cols:
+            y_col = c
+            break
+
+    # Hâlâ yoksa, herhangi bir sayısal kolonu seç
+    if not y_col and numeric_cols:
+        y_col = numeric_cols[0]
+
+    if not y_col:
+        return ""  # yorumlayacak sayısal veri yok
+
+    series = df[y_col].dropna()
+    if series.empty:
+        return ""
+
+    min_val = float(series.min())
+    max_val = float(series.max())
+    mean_val = float(series.mean())
+    first_val = float(series.iloc[0])
+    last_val = float(series.iloc[-1])
+    change = last_val - first_val
+
+    if change > 0:
+        direction = "artış"
+    elif change < 0:
+        direction = "azalış"
+    else:
+        direction = "stabil"
+
+    stats_text = (
+        f"{y_col} için özet istatistikler:\n"
+        f"- Minimum: {min_val:.2f}\n"
+        f"- Maksimum: {max_val:.2f}\n"
+        f"- Ortalama: {mean_val:.2f}\n"
+        f"- İlk değer: {first_val:.2f}\n"
+        f"- Son değer: {last_val:.2f}\n"
+        f"- Genel eğilim: {direction} (fark: {change:.2f})"
+    )
+
+    chart_type = spec.get("type", "")
+    title = spec.get("title", y_col)
+
+    prompt = f"""
+Sen bir veri analisti ve veri görselleştirme uzmanısın.
+
+Aşağıda bir grafiğe ait sayısal özet ve grafik tipi bilgisi var.
+Bu bilgiyi kullanarak, grafiğin altına yazılacak maksimum 2 cümlelik,
+kısa, sade ve profesyonel bir TÜRKÇE açıklama üret.
+
+- Yorumun doğrudan verinin eğilimine ve önemli noktalarına odaklansın.
+- "Bu grafik" diye başlamak zorunda değilsin.
+- Mümkünse hem seviye (yüksek/düşük) hem de eğilimden (artış/azalış/stabil) bahset.
+
+GRAFİK BAŞLIĞI: {title}
+GRAFİK TİPİ: {chart_type}
+ÖZET:
+{stats_text}
+"""
+
+    # OpenAI client yoksa basit fallback
+    if not client:
+        return (
+            f"{y_col} metriği zaman içinde genel olarak {direction} eğilimi gösteriyor; "
+            f"değerler {min_val:.2f}–{max_val:.2f} aralığında ve ortalama yaklaşık {mean_val:.2f}."
+        )
+
+    try:
+        resp = client.responses.create(
+            model="gpt-4.1-mini",
+            input=prompt,
+            max_output_tokens=80,
+        )
+        text = resp.output[0].content[0].text.strip()
+        return text
+    except Exception:
+        # Her ihtimale karşı güvenli fallback
+        return (
+            f"{y_col} metriği zaman içinde genel olarak {direction} eğiliminde; "
+            f"ortalama değer {mean_val:.2f} civarında seyrediyor."
+        )
 
 def suggest_charts_with_ai(df: pd.DataFrame, max_charts: int = 6) -> List[Dict[str, Any]]:
     if not client:
@@ -606,6 +703,7 @@ def render_chart_from_spec(
     """
     AI'den gelen grafik tanımını kullanarak PNG üretir.
     - Tüm grafikler aynı boyutta (8x4.5 inç)
+    - Grafiğin altına AI tabanlı kısa açıklama yazılır
     - Eksik kolon / veri durumunda zarif fallback
     """
     chart_type = spec["type"]
@@ -667,7 +765,6 @@ def render_chart_from_spec(
                     ax.bar(agg.index.astype(str), agg.values)
                     ax.set_xlabel(cat_col)
                     ax.set_ylabel(f"{val_col} (ortalama)")
-                    # X ekseni etiketlerini yana yatır + sağa hizala
                     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
             else:
                 col = cols[0]
@@ -721,12 +818,33 @@ def render_chart_from_spec(
                 )
 
         ax.set_title(title)
-        fig.tight_layout()
+
+        # 🔹 AI tabanlı kısa açıklamayı üret ve grafiğin altına yaz
+        explanation = ai_grafik_yorumu_uret(df, spec)
+        if explanation:
+            # Template tarafında da kullanabilelim diye spec içine koy
+            spec["_ai_comment"] = explanation
+            # Alt metin için biraz boşluk bırak
+            fig.subplots_adjust(bottom=0.22)
+            fig.text(
+                0.5,
+                0.04,
+                explanation,
+                ha="center",
+                fontsize=8,
+                color="#555555",
+                wrap=True,
+            )
+        else:
+            fig.tight_layout()
+
+        if not explanation:
+            fig.tight_layout()
 
         safe_id = safe_filename_part(chart_id)
         filename = f"{upload_id}_{safe_id}_{chart_type}.png"
         filepath = os.path.join(CHART_DIR, filename)
-        fig.savefig(filepath, dpi=140)
+        fig.savefig(filepath, dpi=140, bbox_inches="tight")
         plt.close(fig)
 
         return f"/static/charts/{filename}"
@@ -734,6 +852,7 @@ def render_chart_from_spec(
     except Exception:
         plt.close(fig)
         return None
+
 
 
 
@@ -758,18 +877,23 @@ def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
 
     if specs:
         for spec in specs:
-            url = render_chart_from_spec(df, upload_id, spec)
-            if not url:
-                continue
-            card = {
-                "title": spec.get("title") or "Grafik",
-                "url": url,
-                "description": spec.get("description", ""),
-                "type": spec.get("type"),
-            }
-            chart_cards.append(card)
-            # Geriye dönük uyum: histogram listesine de ekle
-            hist_paths.append(url)
+    url = render_chart_from_spec(df, upload_id, spec)
+    if not url:
+        continue
+
+    # Önce AI tarafından üretilmiş kısa yorum varsa onu kullan,
+    # yoksa OpenAI'nin önerdiği description alanına düş.
+    desc = spec.get("_ai_comment") or spec.get("description", "")
+
+    card = {
+        "title": spec.get("title") or "Grafik",
+        "url": url,
+        "description": desc,
+        "type": spec.get("type"),
+    }
+    chart_cards.append(card)
+    hist_paths.append(url)
+
 
     # 2) Hiç grafik yoksa fallback
     if not chart_cards:
