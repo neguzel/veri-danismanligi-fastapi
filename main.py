@@ -698,57 +698,58 @@ def ai_genel_analiz_uret(df: pd.DataFrame) -> dict:
     Veri seti üzerinden genel değerlendirme, içgörüler, riskler, quick wins,
     önerilen ML modelleri, veri stratejisi ve yol haritası döndüren AI fonksiyonu.
     """
-    # JSON şablonunu f-string DEĞİL, normal string olarak yazıyoruz
-    json_template = """
-Lütfen aşağıdaki formatta JSON döndür:
 
-{
-  "summary": "...",
-  "key_insights": ["...", "..."],
-  "risks": ["...", "..."],
-  "quick_wins": ["...", "..."],
-  "ml_models": ["...", "..."],
-  "data_strategy": ["...", "..."],
-  "roadmap": {
-    "phase_1": "...",
-    "phase_2": "...",
-    "phase_3": "..."
-  }
-}
+    # Burada JSON'u örnek format olarak tarif ediyoruz,
+    # ama süslü parantezli gerçek JSON YAZMIYORUZ (hata çıkmasın diye).
+    format_tanim = """
+Lütfen çıktıyı aşağıdaki anahtarlarla, GEÇERLİ bir JSON olarak döndür:
+
+- summary: Kısa genel değerlendirme (string)
+- key_insights: En fazla 5 maddelik içgörü listesi (array of string)
+- risks: En fazla 5 maddelik risk ve dikkat noktaları (array of string)
+- quick_wins: Kısa vadede yapılabilecek hızlı kazanımlar (array of string)
+- ml_models: Önerilen makine öğrenmesi / istatistiksel model tipleri (array of string)
+- data_strategy: Veri yönetişimi ve strateji önerileri (array of string)
+- roadmap:
+    - phase_1: Kısa vadeli (0–3 ay) adımlar (string)
+    - phase_2: Orta vadeli (3–12 ay) adımlar (string)
+    - phase_3: Uzun vadeli (12+ ay) adımlar (string)
 """
 
-    # Buradan sonrası için f-string kullanıyoruz
+    veri_ozeti = df.describe(include="all").to_string()
+
     prompt = (
         "Aşağıdaki veri seti kolon isimlerine ve özet istatistiklere bakarak, "
-        "KISA VE NET olacak şekilde bir veri danışmanlığı değerlendirmesi üret.\n\n"
-        + json_template
+        "kurumsal bir veri danışmanlığı raporunda kullanılabilecek, "
+        "KISA VE NET bir değerlendirme üret.\n\n"
+        + format_tanim
         + "\n\nVERİ ÖZETİ:\n"
         + f"Kolonlar: {list(df.columns)}\n\n"
-        + "Sayısal kolonların kısa özetleri:\n"
-        + df.describe(include="all").to_string()
+        + "Sayısal ve kategorik kolonların özet istatistikleri:\n"
+        + veri_ozeti
     )
 
     try:
         resp = client.responses.create(
             model="gpt-4.1-mini",
             input=prompt,
-            max_output_tokens=500,
-            response_format="json",  # JSON olarak dönmesini istiyoruz
+            max_output_tokens=700,
+            response_format="json",  # JSON istiyoruz
         )
         return resp.output[0].content[0].json
     except Exception:
-        # Fallback
+        # Her ihtimale karşı fallback
         return {
             "summary": "Veri seti genel olarak tutarlı görünmektedir.",
             "key_insights": ["Önemli içgörü bulunamadı."],
             "risks": ["Risk değerlendirmesi yapılamadı."],
-            "quick_wins": ["Hızlı kazanım önerilemedi."],
+            "quick_wins": ["Hızlı kazanım önerisi üretilemedi."],
             "ml_models": ["Model önerisi yapılamadı."],
             "data_strategy": ["Veri stratejisi üretilemedi."],
             "roadmap": {
-                "phase_1": "Hazırlık yapılamadı.",
-                "phase_2": "Analiz tamamlanamadı.",
-                "phase_3": "Geliştirme adımı oluşturulamadı.",
+                "phase_1": "Hazırlık adımları tanımlanamadı.",
+                "phase_2": "Analiz adımları tanımlanamadı.",
+                "phase_3": "Uzun vadeli yol haritası oluşturulamadı.",
             },
         }
 
