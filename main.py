@@ -915,55 +915,34 @@ def render_chart_from_spec(
 
 
 
-def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
+def render_chart_from_spec(
+    df: pd.DataFrame,
+    upload_id: int,
+    spec: Dict[str, Any],
+) -> Optional[str]:
     """
-    AI destekli grafik üretimi.
-    - OpenAI'den farklı tiplerde grafik şablonları istenir.
-    - Gelen şablonlara göre modern görünümlü grafikler çizilir.
-    - Hiç grafik üretilemezse:
-        * En fazla 3 sayısal kolon için histogram
-        * Tüm sayısallar için korelasyon heatmap
+    AI'den gelen grafik tanımını kullanarak PNG üretir.
+    - Tüm grafikler aynı boyutta (8x4.5 inç)
+    - Çok yoğun verilerde daha okunur grafikler üretmeye çalışır.
     """
-    chart_cards: List[Dict[str, Any]] = []
-    hist_paths: List[str] = []
-    trend_url: Optional[str] = None  # Eski API ile uyum için; artık özel trend çizmesek de field dursun.
+    chart_type = spec.get("type")
+    cols = spec.get("columns") or []
+    title = spec.get("title") or "Grafik"
+    chart_id = spec.get("id") or "chart"
 
- 
-    # 1) AI önerileri
+    # Geçersiz kolonları filtrele
+    cols = [c for c in cols if c in df.columns]
+    if not cols:
+        return None
+
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+
     try:
-        specs = suggest_charts_with_ai(df, max_charts=6)
-    except Exception:
-        specs = []
-
-    if specs:
-        for spec in specs:
-            url = render_chart_from_spec(df, upload_id, spec)
-            if not url:
-                continue
-
-            # AI grafik yorumu varsa onu kullan, yoksa description alanını kullan
-            desc = spec.get("_ai_comment") or spec.get("description", "")
-
-            card = {
-                "title": spec.get("title") or "Grafik",
-                "url": url,
-                "description": desc,
-                "type": spec.get("type"),
-            }
-            chart_cards.append(card)
-            # Geriye dönük uyum: histogram listesine de ekle
-            hist_paths.append(url)
-
-
-
-    # 2) Hiç grafik yoksa fallback
-    if not chart_cards:
-        numeric_cols = df.select_dtypes(include="number").columns.tolist()
-
-        # a) En fazla 3 histogram
-        for col in numeric_cols[:3]:
-            safe_col = safe_filename_part(col)
-            fig, ax = plt.subplots(figsize=(8, 4.5))
+        # -------------------------
+        # 1) Histogram
+        # -------------------------
+        if chart_type == "hist":
+            col = cols[0]
             series = df[col].dropna()
             if series.empty:
                 ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
@@ -971,53 +950,156 @@ def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
                 ax.hist(series, bins=30)
                 ax.set_xlabel(col)
                 ax.set_ylabel("Frekans")
-            ax.set_title(f"{col} - Dağılım")
-            fig.tight_layout()
 
-            filename = f"{upload_id}_hist_{safe_col}.png"
-            filepath = os.path.join(CHART_DIR, filename)
-            fig.savefig(filepath, dpi=140)
-            plt.close(fig)
+        # -------------------------
+        # 2) Çizgi Grafik
+        # -------------------------
+        elif chart_type == "line":
+            if len(cols) == 1:
+                # Tek değişken: indexe göre çiz
+                col = cols[0]
+                series = df[col].dropna().reset_index(drop=True)
+                if series.empty:
+                    ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
+                else:
+                    ax.plot(series.index, series.values, marker="o", linewidth=1.2)
+                    ax.set_xlabel("Index")
+                    ax.set_ylabel(col)
+            else:
+                # İki kolon: x ve y
+                x, y = cols[0], cols[1]
+                tmp = df[[x, y]].dropna()
+                if tmp.empty:
+                    ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
+                else:
+                    # Eğer başlıkta "ortalama" geçiyorsa veya çok satır varsa,
+                    # x'e göre gruplayıp ortalama çizelim (ör: Yıla göre ortalama fiyat)
+                    lower_title = title.lower()
+                    too_many_points = len(tmp) > 500
 
-            url = f"/static/charts/{filename}"
-            hist_paths.append(url)
-            chart_cards.append({"title": f"{col} – Dağılım", "url": url, "description": "", "type": "hist"})
+                    if "ortalama" in lower_title or too_many_points:
+                        agg = (
+                            tmp.groupby(x)[y]
+                            .mean()
+                            .reset_index()
+                            .sort_values(x)
+                        )
+                        ax.plot(agg[x], agg[y], marker="o", linewidth=1.6)
+                        ax.set_ylabel(f"{y} (ortalama)")
+                    else:
+                        # Ham veriyi çiz ama daha ince ve saydam
+                        ax.plot(
+                            tmp[x],
+                            tmp[y],
+                            marker="o",
+                            linewidth=0.8,
+                            alpha=0.3,
+                        )
+                        ax.set_ylabel(y)
 
-        # b) Korelasyon heatmap (varsa)
-        numeric = df.select_dtypes(include="number")
-        if numeric.shape[1] >= 2:
-            corr = numeric.corr()
-            fig, ax = plt.subplots(figsize=(7, 6))
-            im = ax.imshow(corr.values, interpolation="nearest")
-            fig.colorbar(im, ax=ax)
-            ax.set_xticks(range(len(corr.columns)))
-            ax.set_xticklabels(corr.columns, rotation=45, ha="right")
-            ax.set_yticks(range(len(corr.columns)))
-            ax.set_yticklabels(corr.columns)
-            ax.set_title("Sayısal Değişkenler Korelasyon Matrisi")
-            fig.tight_layout()
+                    ax.set_xlabel(x)
 
-            filename = f"{upload_id}_corr_heatmap.png"
-            filepath = os.path.join(CHART_DIR, filename)
-            fig.savefig(filepath, dpi=140)
-            plt.close(fig)
+        # -------------------------
+        # 3) Bar Grafik
+        # -------------------------
+        elif chart_type == "bar":
+            if len(cols) >= 2:
+                cat_col, val_col = cols[0], cols[1]
+                tmp = df[[cat_col, val_col]].dropna()
+                if tmp.empty:
+                    ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
+                else:
+                    agg = (
+                        tmp.groupby(cat_col)[val_col]
+                        .mean()
+                        .sort_values(ascending=False)
+                        .head(15)
+                    )
+                    ax.bar(agg.index.astype(str), agg.values)
+                    ax.set_xlabel(cat_col)
+                    ax.set_ylabel(f"{val_col} (ortalama)")
+                    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+            else:
+                # Tek kolon: kategori sayımı
+                col = cols[0]
+                s = df[col].dropna().value_counts()
+                if s.empty:
+                    ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
+                else:
+                    s = s.head(15)
+                    ax.bar(s.index.astype(str), s.values)
+                    ax.set_xlabel(col)
+                    ax.set_ylabel("Frekans")
+                    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
-            url = f"/static/charts/{filename}"
-            chart_cards.append(
-                {
-                    "title": "Korelasyon Heatmap",
-                    "url": url,
-                    "description": "Sayısal değişkenler arasındaki korelasyon ilişkilerini gösterir.",
-                    "type": "heatmap",
-                }
-            )
-            hist_paths.append(url)
+        # -------------------------
+        # 4) Pasta Grafik
+        # -------------------------
+        elif chart_type == "pie":
+            col = cols[0]
+            s = df[col].dropna().value_counts()
+            if s.empty:
+                ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
+            else:
+                s = s.head(8)
+                if len(s) > 6:
+                    top = s[:5]
+                    other = s[5:].sum()
+                    s = top.append(pd.Series({"Diğer": other}))
+                ax.pie(s.values, labels=s.index.astype(str), autopct="%1.1f%%")
+                ax.set_ylabel("")
 
-    return {
-        "charts": chart_cards,
-        "histograms": hist_paths,
-        "trend": trend_url,
-    }
+        # -------------------------
+        # 5) Boxplot
+        # -------------------------
+        elif chart_type == "box":
+            selected = [c for c in cols if c in df.columns]
+            if selected:
+                df[selected].dropna().boxplot(ax=ax)
+                plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+            else:
+                ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
+
+        # -------------------------
+        # 6) Korelasyon Heatmap
+        # -------------------------
+        elif chart_type == "heatmap":
+            numeric = df.select_dtypes(include="number")
+            if numeric.shape[1] >= 2:
+                corr = numeric.corr()
+                im = ax.imshow(corr.values, interpolation="nearest")
+                fig.colorbar(im, ax=ax)
+                ax.set_xticks(range(len(corr.columns)))
+                ax.set_xticklabels(corr.columns, rotation=45, ha="right")
+                ax.set_yticks(range(len(corr.columns)))
+                ax.set_yticklabels(corr.columns)
+            else:
+                ax.text(
+                    0.5,
+                    0.5,
+                    "Korelasyon için yeterli sayısal kolon yok",
+                    ha="center",
+                    va="center",
+                )
+        else:
+            # Bilinmeyen tip → info yaz
+            ax.text(0.5, 0.5, f"Bilinmeyen grafik tipi: {chart_type}", ha="center", va="center")
+
+        ax.set_title(title)
+        fig.tight_layout()
+
+        safe_id = safe_filename_part(chart_id)
+        filename = f"{upload_id}_{safe_id}_{chart_type}.png"
+        filepath = os.path.join(CHART_DIR, filename)
+        fig.savefig(filepath, dpi=140)
+        plt.close(fig)
+
+        return f"/static/charts/{filename}"
+
+    except Exception:
+        plt.close(fig)
+        return None
+
 
 def build_chart_cards(charts: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
