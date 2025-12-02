@@ -922,6 +922,7 @@ def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
     hist_paths: List[str] = []
     trend_url: Optional[str] = None  # Eski API ile uyum için; artık özel trend çizmesek de field dursun.
 
+ 
     # 1) AI önerileri
     try:
         specs = suggest_charts_with_ai(df, max_charts=6)
@@ -930,22 +931,23 @@ def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
 
     if specs:
         for spec in specs:
-    url = render_chart_from_spec(df, upload_id, spec)
-    if not url:
-        continue
+            url = render_chart_from_spec(df, upload_id, spec)
+            if not url:
+                continue
 
-    # Önce AI tarafından üretilmiş kısa yorum varsa onu kullan,
-    # yoksa OpenAI'nin önerdiği description alanına düş.
-    desc = spec.get("_ai_comment") or spec.get("description", "")
+            # AI grafik yorumu varsa onu kullan, yoksa description alanını kullan
+            desc = spec.get("_ai_comment") or spec.get("description", "")
 
-    card = {
-        "title": spec.get("title") or "Grafik",
-        "url": url,
-        "description": desc,
-        "type": spec.get("type"),
-    }
-    chart_cards.append(card)
-    hist_paths.append(url)
+            card = {
+                "title": spec.get("title") or "Grafik",
+                "url": url,
+                "description": desc,
+                "type": spec.get("type"),
+            }
+            chart_cards.append(card)
+            # Geriye dönük uyum: histogram listesine de ekle
+            hist_paths.append(url)
+
 
 
     # 2) Hiç grafik yoksa fallback
