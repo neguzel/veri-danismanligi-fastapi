@@ -1715,35 +1715,36 @@ def download_pdf(upload_id: int, db: OrmSession = Depends(get_db)):
     pdf_path = os.path.join(REPORT_DIR, f"rapor_{upload_id}.pdf")
 
     meta: Dict[str, Any] = {
-    "company": upload.company or "",
-    "contact_name": upload.contact_name or "",
-    "contact_email": upload.contact_email or "",
-    "contact_phone": upload.contact_phone or "",
-    "contact_sector": upload.contact_sector or "",
+        "company": upload.company or "",
+        "contact_name": upload.contact_name or "",
+        "contact_email": upload.contact_email or "",
+        "contact_phone": upload.contact_phone or "",
+        "contact_sector": upload.contact_sector or "",
     }
 
     metrics: Dict[str, Any] = {
-    "row_count": upload.row_count,
-    "col_count": upload.col_count,
-    "total_cells": upload.total_cells,
-    "total_missing": upload.total_missing,
-    "quality_score": round(upload.quality_score or 0.0, 2) if upload.quality_score is not None else "-",
-    "top_missing_col": upload.top_missing_col or "-",
-    "top_var_col": upload.top_var_col or "-",
+        "row_count": upload.row_count,
+        "col_count": upload.col_count,
+        "total_cells": upload.total_cells,
+        "total_missing": upload.total_missing,
+        "quality_score": round(upload.quality_score or 0.0, 2)
+        if upload.quality_score is not None
+        else "-",
+        "top_missing_col": upload.top_missing_col or "-",
+        "top_var_col": upload.top_var_col or "-",
     }
 
     generate_pdf_report(
-    output_path=pdf_path,
-    summary=summary,
-    risks=risks,
-    features=features,
-    models=models,
-    recommendations=recs,
-    chart_files=chart_files,
-    meta=meta,
-    metrics=metrics,
+        output_path=pdf_path,
+        summary=summary,
+        risks=risks,
+        features=features,
+        models=models,
+        recommendations=recs,
+        chart_files=chart_files,
+        meta=meta,
+        metrics=metrics,
     )
-
 
     return FileResponse(
         pdf_path,
