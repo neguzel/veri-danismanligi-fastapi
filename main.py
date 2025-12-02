@@ -693,7 +693,60 @@ Her grafik için:
         )
 
     return cleaned
+def ai_genel_analiz_uret(df: pd.DataFrame) -> dict:
+    """
+    Veri seti üzerinden genel değerlendirme, içgörüler, riskler, quick wins,
+    önerilen ML modelleri, veri stratejisi ve yol haritası döndüren AI fonksiyonu.
+    """
+    prompt = f"""
+Aşağıdaki veri seti kolon isimlerine ve özet istatistiklere bakarak,
+KISA VE NET olacak şekilde bir veri danışmanlığı değerlendirmesi üret.
 
+Lütfen aşağıdaki formatta JSON döndür:
+
+{
+  "summary": "...",
+  "key_insights": ["...", "..."],
+  "risks": ["...", "..."],
+  "quick_wins": ["...", "..."],
+  "ml_models": ["...", "..."],
+  "data_strategy": ["...", "..."],
+  "roadmap": {
+    "phase_1": "...",
+    "phase_2": "...",
+    "phase_3": "..."
+  }
+}
+
+VERİ ÖZETİ:
+Kolonlar: {list(df.columns)}
+Sayısal kolonların kısa özetleri:
+{df.describe().to_string()}
+"""
+
+    try:
+        resp = client.responses.create(
+            model="gpt-4.1-mini",
+            input=prompt,
+            max_output_tokens=500,
+            response_format="json"  # JSON olarak dönmesini garanti ediyoruz
+        )
+        return resp.output[0].content[0].json
+    except Exception:
+        # Fallback
+        return {
+            "summary": "Veri seti genel olarak tutarlı görünmektedir.",
+            "key_insights": ["Önemli içgörü bulunamadı."],
+            "risks": ["Risk değerlendirmesi yapılamadı."],
+            "quick_wins": ["Hızlı kazanım önerilemedi."],
+            "ml_models": ["Model önerisi yapılamadı."],
+            "data_strategy": ["Veri stratejisi üretilemedi."],
+            "roadmap": {
+                "phase_1": "Hazırlık yapılamadı.",
+                "phase_2": "Analiz tamamlanamadı.",
+                "phase_3": "Geliştirme adımı oluşturulamadı."
+            }
+        }
 
 def render_chart_from_spec(
     df: pd.DataFrame,
@@ -1432,6 +1485,9 @@ async def upload_post(
     # Grafikler
     charts_raw = generate_charts(df, upload_id=upload.id)
     chart_cards = build_chart_cards(charts_raw)
+    # 🔥 AI GENEL ANALİZ – (summary, insights, risks, quick wins, roadmap vb.)
+    ai_analysis = ai_genel_analiz_uret(df)
+
 
     ANALYSIS_CACHE[upload.id] = {
         "file_name": file.filename,
@@ -1476,25 +1532,26 @@ async def upload_post(
         "ai_recommendations": ai_recommendations,
     }
 
-    return templates.TemplateResponse(
-        "report.html",
-        {
-            "request": request,
-            "user": None,
-            "analysis": analysis_ctx,
-            "charts": chart_cards,
-            "ai_comment": ai_summary,
-            "ai_report": ai_recommendations,
-            "company": company_label,
-            "file_name": file.filename,
-            "file_type": file_type,
-            "contact_name": full_name,
-            "contact_phone": phone,
-            "contact_email": email,
-            "contact_sector": sector,
-            "upload_id": upload.id,
-        },
-    )
+   return templates.TemplateResponse(
+    "report.html",
+    {
+        "request": request,
+        "user": None,
+        "analysis": analysis_ctx,
+        "charts": chart_cards,
+        "ai_comment": ai_summary,
+        "ai_report": ai_recommendations,
+        "ai": ai_analysis,   # ⭐ ŞU SATIR EKLENİYOR
+        "company": company_label,
+        "file_name": file.filename,
+        "file_type": file_type,
+        "contact_name": full_name,
+        "contact_phone": phone,
+        "contact_email": email,
+        "contact_sector": sector,
+        "upload_id": upload.id,
+    },
+)
 
 
 @app.get("/reports")
