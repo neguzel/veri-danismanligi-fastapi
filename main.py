@@ -975,6 +975,50 @@ def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
         "trend": trend_url,
     }
 
+def build_chart_cards(charts_raw: Any) -> List[Dict[str, Any]]:
+    """
+    generate_charts çıktısını frontend'in beklediği formata dönüştürür.
+    Hem yeni dict formatını hem eski liste formatını destekler.
+
+    Dönüş formatı:
+    [
+        { "title": ..., "url": ..., "description": ..., "type": ... },
+        ...
+    ]
+    """
+    cards: List[Dict[str, Any]] = []
+
+    # 1) Eğer generate_charts dict döndürdüyse
+    if isinstance(charts_raw, dict):
+        charts = charts_raw.get("charts") or []
+        if isinstance(charts, list):
+            for ch in charts:
+                if not isinstance(ch, dict):
+                    continue
+                cards.append(
+                    {
+                        "title": ch.get("title", "Grafik"),
+                        "url": ch.get("url"),
+                        "description": ch.get("description", ""),
+                        "type": ch.get("type", ""),
+                    }
+                )
+
+    # 2) Eğer eski format olarak doğrudan liste döndürdüyse
+    elif isinstance(charts_raw, list):
+        for ch in charts_raw:
+            if not isinstance(ch, dict):
+                continue
+            cards.append(
+                {
+                    "title": ch.get("title", "Grafik"),
+                    "url": ch.get("url"),
+                    "description": ch.get("description", ""),
+                    "type": ch.get("type", ""),
+                }
+            )
+
+    return cards
 
 
 
