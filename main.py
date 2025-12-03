@@ -819,7 +819,7 @@ def render_chart_from_spec(df: pd.DataFrame, upload_id: int, spec: Dict[str, Any
                 plt.close(fig)
                 return None
 
-        # ---- 4) BAR CHART (x kategorik, y sayısal) ----
+        # ---- 4) BAR CHART ----
         elif chart_type in ("bar", "column"):
             if x and y and x in df.columns and y in df.columns:
                 data = df[[x, y]].dropna()
@@ -867,65 +867,115 @@ def render_chart_from_spec(df: pd.DataFrame, upload_id: int, spec: Dict[str, Any
         return None
 
 
-
-def build_chart_cards(charts: Dict[str, Any]) -> List[Dict[str, Any]]:
+def generate_charts(df: pd.DataFrame, upload_id: int) -> Dict[str, Any]:
     """
-    Template'te kullanılacak kart yapısını üretir.
-
-    Beklenen giriş:
-      - Yeni yapı: {
-          "charts": [
-             {"title": "...", "url": "...", "description": "...", "type": "..."},
-             ...
-          ],
-          "histograms": [...],
-          "trend": "..."
-        }
-
-      - Eski yapı: {"histograms": [...], "trend": "..."}
+    AI destekli grafik üretimi.
+    - OpenAI'den farklı tiplerde grafik şablonları istenir.
+    - Gelen şablonlara göre modern görünümlü grafikler çizilir.
+    - Hiç grafik üretilemezse:
+        * En fazla 3 sayısal kolon için histogram
+        * Tüm sayısallar için korelasyon heatmap
     """
-    cards: List[Dict[str, Any]] = []
-    if not charts:
-        return cards
+    chart_cards: List[Dict[str, Any]] = []
+    hist_paths: List[str] = []
+    trend_url: Optional[str] = None  # Eski API ile uyum için; artık özel trend çizmesek de field dursun.
 
-    # 1) Yeni yapı: charts listesi varsa direkt onu kullan
-    ai_cards = charts.get("charts")
-    if isinstance(ai_cards, list) and ai_cards:
-        for c in ai_cards:
-            if not isinstance(c, dict):
+    # 1) AI önerileri
+    try:
+        specs = suggest_charts_with_ai(df, max_charts=6)
+    except Exception:
+        specs = []
+
+    if specs:
+        for spec in specs:
+            url = render_chart_from_spec(df, upload_id, spec)
+            if not url:
                 continue
-            cards.append(
+
+            # AI grafik yorumu varsa onu kullan, yoksa description alanını kullan
+            desc = spec.get("_ai_comment") or spec.get("description", "")
+
+            card = {
+                "title": spec.get("title") or "Grafik",
+                "url": url,
+                "description": desc,
+                "type": spec.get("type"),
+            }
+            chart_cards.append(card)
+            # Geriye dönük uyum: histogram listesine de ekle
+            hist_paths.append(url)
+
+    # 2) Hiç grafik yoksa fallback
+    if not chart_cards:
+        numeric_cols = df.select_dtypes(include="number").columns.tolist()
+
+        # a) En fazla 3 histogram
+        for col in numeric_cols[:3]:
+            safe_col = safe_filename_part(col)
+            fig, ax = plt.subplots(figsize=(8, 4.5))
+            series = df[col].dropna()
+            if series.empty:
+                ax.text(0.5, 0.5, "Veri yok", ha="center", va="center")
+            else:
+                ax.hist(series, bins=30)
+                ax.set_xlabel(col)
+                ax.set_ylabel("Frekans")
+            ax.set_title(f"{col} - Dağılım")
+            fig.tight_layout()
+
+            filename = f"{upload_id}_hist_{safe_col}.png"
+            filepath = os.path.join(CHART_DIR, filename)
+            fig.savefig(filepath, dpi=140)
+            plt.close(fig)
+
+            url = f"/static/charts/{filename}"
+            hist_paths.append(url)
+            chart_cards.append(
                 {
-                    "title": c.get("title", "Grafik"),
-                    "url": c.get("url"),
-                    "description": c.get("description", ""),
-                    "type": c.get("type"),
+                    "title": f"{col} – Dağılım",
+                    "url": url,
+                    "description": "",
+                    "type": "hist",
                 }
             )
-        return cards
 
-    # 2) Eski yapı: sadece histogram + trend varsa
-    histos = charts.get("histograms") or []
-    for url in histos:
-        if not url:
-            continue
-        base = os.path.basename(url)
-        name = os.path.splitext(base)[0]
-        parts = name.split("_")
-        col = parts[-1] if len(parts) > 2 else ""
-        title = f"{col} – Dağılım" if col else "Dağılım Grafiği"
-        cards.append({"title": title, "url": url})
+        # b) Korelasyon heatmap (varsa)
+        numeric = df.select_dtypes(include="number")
+        if numeric.shape[1] >= 2:
+            corr = numeric.corr()
+            fig, ax = plt.subplots(figsize=(7, 6))
+            im = ax.imshow(corr.values, interpolation="nearest")
+            fig.colorbar(im, ax=ax)
+            ax.set_xticks(range(len(corr.columns)))
+            ax.set_xticklabels(corr.columns, rotation=45, ha="right")
+            ax.set_yticks(range(len(corr.columns)))
+            ax.set_yticklabels(corr.columns)
+            ax.set_title("Sayısal Değişkenler Korelasyon Matrisi")
+            fig.tight_layout()
 
-    trend_url = charts.get("trend")
-    if trend_url:
-        base = os.path.basename(trend_url)
-        name = os.path.splitext(base)[0]
-        parts = name.split("_")
-        col = parts[-1] if len(parts) > 2 else ""
-        title = f"{col} – Trend" if col else "Trend Grafiği"
-        cards.append({"title": title, "url": trend_url})
+            filename = f"{upload_id}_corr_heatmap.png"
+            filepath = os.path.join(CHART_DIR, filename)
+            fig.savefig(filepath, dpi=140)
+            plt.close(fig)
 
-    return cards
+            url = f"/static/charts/{filename}"
+            chart_cards.append(
+                {
+                    "title": "Korelasyon Heatmap",
+                    "url": url,
+                    "description": "Sayısal değişkenler arasındaki korelasyon ilişkilerini gösterir.",
+                    "type": "heatmap",
+                }
+            )
+            hist_paths.append(url)
+
+    return {
+        "charts": chart_cards,
+        "histograms": hist_paths,
+        "trend": trend_url,
+    }
+
+
 
 
 # -------------------------------------------------------------------
