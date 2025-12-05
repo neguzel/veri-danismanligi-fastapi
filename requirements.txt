@@ -11,6 +11,9 @@ reportlab
 matplotlib
 itsdangerous
 pytz
+bcrypt
+
+
 
 
 
