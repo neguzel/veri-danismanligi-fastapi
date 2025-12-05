@@ -8,17 +8,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 import pytz
 
-from passlib.context import CryptContext
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
-
-
+# Türkiye saat dilimini ayarla
 turkey_tz = pytz.timezone("Europe/Istanbul")
 timestamp = datetime.now(turkey_tz).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -66,11 +56,15 @@ from openai import OpenAI
 
 load_dotenv()
 
+APP_ENV = os.getenv("APP_ENV", "dev")
+SESSION_SECRET = os.getenv("SESSION_SECRET", "dev-secret-change-me")
+
 ADMIN_DEFAULT_EMAIL = os.getenv("ADMIN_EMAIL", "admin@veridanismanligi.com")
-ADMIN_DEFAULT_PASSWORD = os.getenv("ADMIN_PASSWORD", "YzA!2025veriPanel*")
+ADMIN_DEFAULT_PASSWORD = os.getenv("ADMIN_PASSWORD", "VeriAdmin!2025")
 
 OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or "").strip()
 client: Optional[OpenAI] = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -78,6 +72,8 @@ TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 CHART_DIR = os.path.join(STATIC_DIR, "charts")
 REPORT_DIR = os.path.join(STATIC_DIR, "reports")
+MAX_UPLOAD_SIZE = 20 * 1024 * 1024  # 20 MB
+
 
 os.makedirs(STATIC_DIR, exist_ok=True)
 os.makedirs(CHART_DIR, exist_ok=True)
@@ -188,7 +184,7 @@ Base.metadata.create_all(bind=engine)
 # -------------------------------------------------------------------
 
 app = FastAPI(title="Veri Danışmanlığı – Akıllı Veri Analiz Paneli")
-app.add_middleware(SessionMiddleware, secret_key="CHANGE_THIS_SECRET")
+app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
@@ -826,7 +822,7 @@ def render_chart_from_spec(df: pd.DataFrame, upload_id: int, spec: Dict[str, Any
     cols = spec.get("columns") or spec.get("cols")
 
     plt.clf()
-    fig, ax = plt.subplots(figsize=(8, 4.5))
+    fig, ax = plt.subplots(figsize=(6, 3)) # daha küçük, daha ince grafik
 
     try:
         # ---- 1) SCATTER / NOKTA GRAFİĞİ ----
@@ -1151,24 +1147,32 @@ def generate_pdf_report(
         return y_ - 0.7 * cm
 
     def draw_paragraph(text: str, y_: float, font_size: int = 10) -> float:
-        """Paragraf çizer, sayfa sonunda otomatik olarak devam ettirir."""
+        """
+        Paragraf çizer, satır aralarını ve satır uzunluklarını daha dengeli yapar.
+        """
         if not text:
             return y_
+
         c.setFont(PDF_FONT, font_size)
-        max_chars = 110
+        max_chars = 90
+        left_x = margin + 0.2 * cm
+
         for raw_line in text.splitlines():
             line = raw_line.strip()
             if not line:
-                y_ -= 0.4 * cm
+                y_ -= 0.45 * cm
                 continue
+
             wrapped = textwrap.wrap(line, max_chars) or [line]
             for wline in wrapped:
                 if y_ < 2.5 * cm:
                     y_ = new_page_header("Veri Analiz Raporu (devam)")
                     c.setFont(PDF_FONT, font_size)
-                c.drawString(margin, y_, wline)
+
+                c.drawString(left_x, y_, wline)
                 y_ -= 0.45 * cm
-        y_ -= 0.3 * cm
+
+        y_ -= 0.35 * cm
         return y_
 
     # ----------------- SAYFA 1: Kapak + içerik -----------------
@@ -1344,7 +1348,7 @@ def init_admin_user():
     try:
         admin = db.query(User).filter(User.is_admin == True).first()
         if admin:
-            return
+            return  # zaten var
 
         admin = User(
             full_name="Sistem Admin",
@@ -1357,9 +1361,13 @@ def init_admin_user():
         )
         db.add(admin)
         db.commit()
-        print("✅ Admin oluşturuldu.")
+        print(
+            "✅ Varsayılan admin oluşturuldu: "
+            f"{ADMIN_DEFAULT_EMAIL} / (şifre env'den, bcrypt ile hash'li)"
+        )
     finally:
         db.close()
+
 
 
 @app.on_event("startup")
@@ -1445,14 +1453,52 @@ async def upload_post(
     file: UploadFile = File(...),
     db: OrmSession = Depends(get_db),
 ):
+       # Dosyayı belleğe al
     content = await file.read()
 
-    # CSV > Excel fallback
+    # 1) BOŞ DOSYA KONTROLÜ
+    if not content:
+        return templates.TemplateResponse(
+            "upload.html",
+            {
+                "request": request,
+                "user": user if "user" in locals() else None,
+                "error": "Boş dosya yüklendi. Lütfen geçerli bir CSV veya Excel dosyası seçin.",
+                "full_name": full_name,
+                "company_name": company_name,
+                "phone": phone,
+                "email": email,
+                "sector": sector,
+            },
+        )
+
+    # 2) DOSYA BOYUTU KONTROLÜ
+    if len(content) > MAX_UPLOAD_SIZE:
+        return templates.TemplateResponse(
+            "upload.html",
+            {
+                "request": request,
+                "user": user if "user" in locals() else None,
+                "error": "Dosya boyutu çok büyük. Lütfen 20 MB'den küçük bir dosya yükleyin.",
+                "full_name": full_name,
+                "company_name": company_name,
+                "phone": phone,
+                "email": email,
+                "sector": sector,
+            },
+        )
+
+    # 3) CSV ÖNCE, OLMUYORSA EXCEL DENE
+    df = None
+    file_type = None
+
     try:
+        # Önce CSV olarak dene
         df = pd.read_csv(io.BytesIO(content))
         file_type = "csv"
     except Exception:
         try:
+            # CSV okunamazsa Excel olarak dene
             df = pd.read_excel(io.BytesIO(content))
             file_type = "excel"
         except Exception:
@@ -1460,10 +1506,19 @@ async def upload_post(
                 "upload.html",
                 {
                     "request": request,
-                    "user": None,
-                    "error": "Dosya okunamadı. Lütfen geçerli bir CSV/Excel dosyası yükleyin.",
+                    "user": user if "user" in locals() else None,
+                    "error": "Dosya okunamadı. Lütfen CSV veya Excel formatında bir dosya yükleyin.",
+                    "full_name": full_name,
+                    "company_name": company_name,
+                    "phone": phone,
+                    "email": email,
+                    "sector": sector,
                 },
             )
+
+    # Buradan sonra df ve file_type güvenle kullanabilirsin
+    # (senin mevcut analiz, kayıt ve grafik üretim kodun aynen devam edecek)
+
 
     rows, cols = df.shape
     total_cells = int(rows * cols)
