@@ -699,8 +699,6 @@ def ai_genel_analiz_uret(df: pd.DataFrame) -> dict:
     önerilen ML modelleri, veri stratejisi ve yol haritası döndüren AI fonksiyonu.
     """
 
-    # Burada JSON'u örnek format olarak tarif ediyoruz,
-    # ama süslü parantezli gerçek JSON YAZMIYORUZ (hata çıkmasın diye).
     format_tanim = """
 Lütfen çıktıyı aşağıdaki anahtarlarla, GEÇERLİ bir JSON olarak döndür:
 
@@ -714,6 +712,8 @@ Lütfen çıktıyı aşağıdaki anahtarlarla, GEÇERLİ bir JSON olarak döndü
     - phase_1: Kısa vadeli (0–3 ay) adımlar (string)
     - phase_2: Orta vadeli (3–12 ay) adımlar (string)
     - phase_3: Uzun vadeli (12+ ay) adımlar (string)
+
+Sadece JSON ver, başına/sonuna açıklama, markdown, ``` işareti vb. ekleme.
 """
 
     veri_ozeti = df.describe(include="all").to_string()
@@ -729,16 +729,8 @@ Lütfen çıktıyı aşağıdaki anahtarlarla, GEÇERLİ bir JSON olarak döndü
         + veri_ozeti
     )
 
-    try:
-        resp = client.responses.create(
-            model="gpt-4.1-mini",
-            input=prompt,
-            max_output_tokens=700,
-            response_format="json",  # JSON istiyoruz
-        )
-        return resp.output[0].content[0].json
-    except Exception:
-        # Her ihtimale karşı fallback
+    # OpenAI anahtarı yoksa veya client tanımlı değilse fallback
+    if not client:
         return {
             "summary": "Veri seti genel olarak tutarlı görünmektedir.",
             "key_insights": ["Önemli içgörü bulunamadı."],
@@ -752,6 +744,54 @@ Lütfen çıktıyı aşağıdaki anahtarlarla, GEÇERLİ bir JSON olarak döndü
                 "phase_3": "Uzun vadeli yol haritası oluşturulamadı.",
             },
         }
+
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            temperature=0.2,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Sen kurumsal veri danışmanlığı raporları üreten bir uzmansın. "
+                        "ÇIKTIN GEÇERLİ JSON OLMALI ve yalnızca JSON dönmelisin."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+        )
+
+        raw = (resp.choices[0].message.content or "").strip()
+        data = json.loads(raw)
+
+        # Temel alanları garanti altına alalım (boşsa bile)
+        return {
+            "summary": data.get("summary", ""),
+            "key_insights": data.get("key_insights", []),
+            "risks": data.get("risks", []),
+            "quick_wins": data.get("quick_wins", []),
+            "ml_models": data.get("ml_models", []),
+            "data_strategy": data.get("data_strategy", []),
+            "roadmap": data.get("roadmap", {}),
+        }
+
+    except Exception:
+        # Her ihtimale karşı güvenli fallback
+        return {
+            "summary": "Veri seti genel olarak tutarlı görünmektedir.",
+            "key_insights": ["Önemli içgörü bulunamadı."],
+            "risks": ["Risk değerlendirmesi yapılamadı."],
+            "quick_wins": ["Hızlı kazanım önerisi üretilemedi."],
+            "ml_models": ["Model önerisi yapılamadı."],
+            "data_strategy": ["Veri stratejisi üretilemedi."],
+            "roadmap": {
+                "phase_1": "Hazırlık adımları tanımlanamadı.",
+                "phase_2": "Analiz adımları tanımlanamadı.",
+                "phase_3": "Uzun vadeli yol haritası oluşturulamadı.",
+            },
+        }
+
 
 def render_chart_from_spec(df: pd.DataFrame, upload_id: int, spec: Dict[str, Any]) -> Optional[str]:
     """
@@ -1343,7 +1383,7 @@ def admin_login_post(
 @app.get("/logout")
 def logout(request: Request):
     request.session.clear()
-    return RedirectResponse(url="/login", status_code=302)
+    return RedirectResponse(url="/admin/login", status_code=302)
 
 
 @app.get("/upload", response_class=HTMLResponse)
@@ -1512,11 +1552,6 @@ async def upload_post(
         },
     )
 
-
-@app.get("/reports")
-def reports_redirect():
-    # Raporlar menüsüne tıklayınca direkt admin paneline gitsin
-    return RedirectResponse(url="/admin/global", status_code=302)
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
