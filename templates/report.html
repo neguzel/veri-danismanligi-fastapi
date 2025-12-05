@@ -1,300 +1,156 @@
 {% extends "base.html" %}
-{% block title %}Veri Analiz Raporu – {{ company or "Firma" }}{% endblock %}
+{% block title %}Analiz Sonucu – Veri Danışmanlığı{% endblock %}
 
-{% block page_title %}Veri Analiz Raporu{% endblock %}
+{% block page_title %}Analiz Sonucu{% endblock %}
 {% block page_subtitle %}
-{{ company or "Firma" }} için otomatik üretilmiş veri kalite ve yapay zekâ analiz özeti.
+Yüklediğiniz veri seti için otomatik veri kalite analizi, grafikler ve AI destekli rapor özeti.
 {% endblock %}
 
 {% block content %}
 
-<!-- Üst başlık satırı: sol tarafta dosya/firma, sağda PDF butonu -->
-<div class="vd-section">
-  <div class="vd-grid vd-grid-2" style="align-items:flex-start;gap:16px;">
-    <div>
-      <div class="vd-meta-line">
-        <span class="vd-badge">Dosya</span>
-        <span class="vd-meta-value">{{ file_name or "Belirtilmedi" }}</span>
-      </div>
-      <div class="vd-meta-line">
-        <span class="vd-badge">Firma</span>
-        <span class="vd-meta-value">{{ company or "Belirtilmedi" }}</span>
-      </div>
-      <div class="vd-meta-line">
-        <span class="vd-badge">Veri Tipi</span>
-        <span class="vd-meta-value">{{ file_type|upper }}</span>
-      </div>
-    </div>
+<div class="vd-toolbar" style="margin-bottom:16px; display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+  <div>
+    <div class="vd-text-muted">Dosya:</div>
+    <div><strong>{{ file_name }}</strong> ({{ file_type|upper }})</div>
+    {% if company %}
+    <div class="vd-text-muted">Firma: {{ company }}</div>
+    {% endif %}
+  </div>
+  <div style="display:flex; gap:8px; align-items:flex-end;">
+    <a href="/download_pdf/{{ upload_id }}" class="vd-btn vd-btn-primary">
+      📄 PDF Raporu İndir
+    </a>
+    <a href="/upload" class="vd-btn vd-btn-ghost">
+      ↻ Yeni Veri Yükle
+    </a>
+  </div>
+</div>
 
-    <div style="text-align:right;">
-      {% if upload_id %}
-      <a href="/download_pdf/{{ upload_id }}" class="vd-btn vd-btn-primary">
-        📄 PDF Raporunu İndir
-      </a>
+<div class="vd-grid vd-grid-3">
+  <div class="vd-card">
+    <div class="vd-card-body">
+      <div class="vd-kpi-label">Veri Kalite Skoru</div>
+      <div class="vd-kpi-value">{{ analysis.quality_score }}%</div>
+      <div class="vd-kpi-sub">Satır / Kolon: {{ analysis.rows }} / {{ analysis.cols }}</div>
+    </div>
+  </div>
+  <div class="vd-card">
+    <div class="vd-card-body">
+      <div class="vd-kpi-label">Toplam Hücre</div>
+      <div class="vd-kpi-value">{{ analysis.total_cells }}</div>
+      <div class="vd-kpi-sub">Eksik Hücre: {{ analysis.total_missing }}</div>
+    </div>
+  </div>
+  <div class="vd-card">
+    <div class="vd-card-body">
+      <div class="vd-kpi-label">En Kritik Alanlar</div>
+      <div class="vd-kpi-sub">En çok eksik: {{ analysis.top_missing_col or "-" }}</div>
+      <div class="vd-kpi-sub">En yüksek varyans: {{ analysis.top_var_col or "-" }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="vd-grid vd-grid-2" style="margin-top:20px;">
+  <div class="vd-card">
+    <div class="vd-card-header">
+      <h2 class="vd-card-title">AI Genel Özet</h2>
+    </div>
+    <div class="vd-card-body">
+      <p>{{ ai.summary }}</p>
+    </div>
+  </div>
+
+  <div class="vd-card">
+    <div class="vd-card-header">
+      <h2 class="vd-card-title">Hızlı Kazanımlar</h2>
+    </div>
+    <div class="vd-card-body">
+      {% if ai.quick_wins %}
+      <ul class="vd-list">
+        {% for item in ai.quick_wins %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
       {% else %}
-      <span class="vd-text-muted">PDF için yükleme ID'si bulunamadı.</span>
+      <p class="vd-text-muted">AI henüz öneri üretemedi.</p>
       {% endif %}
     </div>
   </div>
 </div>
 
-<!-- Müşteri bilgileri kartı -->
-{% if contact_name or contact_email or contact_phone or contact_sector %}
-<div class="vd-section">
+<div class="vd-grid vd-grid-3" style="margin-top:20px;">
   <div class="vd-card">
     <div class="vd-card-header">
-      <h2 class="vd-card-title">Müşteri / İrtibat Bilgileri</h2>
+      <h3 class="vd-card-title">Öne Çıkan İçgörüler</h3>
     </div>
     <div class="vd-card-body">
-      <div class="vd-grid vd-grid-2">
-        <div>
-          <p><strong>Ad Soyad:</strong> {{ contact_name or "-" }}</p>
-          <p><strong>Firma:</strong> {{ company or "-" }}</p>
-          <p><strong>Sektör:</strong> {{ contact_sector or "-" }}</p>
-        </div>
-        <div>
-          <p><strong>E-posta:</strong>
-            {% if contact_email %}
-              <a href="mailto:{{ contact_email }}" class="vd-link">{{ contact_email }}</a>
-            {% else %}
-              -
-            {% endif %}
-          </p>
-          <p><strong>Cep Telefonu:</strong>
-            {% if contact_phone %}
-              <a href="tel:{{ contact_phone }}" class="vd-link">{{ contact_phone }}</a>
-            {% else %}
-              -
-            {% endif %}
-          </p>
-        </div>
-      </div>
+      {% if ai.key_insights %}
+      <ul class="vd-list">
+        {% for item in ai.key_insights %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="vd-text-muted">İçgörü listesi boş.</p>
+      {% endif %}
     </div>
   </div>
-</div>
-{% endif %}
 
-<!-- KPI kartları satırı -->
-<div class="vd-section vd-section-kpi">
-  <div class="vd-kpi-row">
-    <div class="vd-card vd-card-kpi vd-card-accent">
-      <div class="vd-card-header">
-        <div class="vd-card-icon">✅</div>
-        <h3>Veri Kalite Skoru</h3>
-      </div>
-      <div class="vd-card-body">
-        <div class="vd-kpi-value-lg">
-          {{ (analysis.quality_score or 0)|round(1) }}%
-        </div>
-        <div class="vd-kpi-caption">
-          Eksik veri oranı dikkate alınarak hesaplanan kalite metriği.
-        </div>
-      </div>
-    </div>
-
-    <div class="vd-card vd-card-kpi">
-      <div class="vd-card-header">
-        <div class="vd-card-icon">📊</div>
-        <h3>Satır / Kolon</h3>
-      </div>
-      <div class="vd-card-body">
-        <div class="vd-kpi-value">
-          {{ analysis.rows }} / {{ analysis.cols }}
-        </div>
-        <div class="vd-kpi-caption">
-          Toplam hücre: {{ analysis.total_cells }}
-        </div>
-      </div>
-    </div>
-
-    <div class="vd-card vd-card-kpi">
-      <div class="vd-card-header">
-        <div class="vd-card-icon">⚠️</div>
-        <h3>Eksik Hücre</h3>
-      </div>
-      <div class="vd-card-body">
-        <div class="vd-kpi-value">
-          {{ analysis.total_missing }}
-        </div>
-        <div class="vd-kpi-caption">
-          En çok eksik alan: {{ analysis.top_missing_col or "-" }}
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-{% if ai %}
-<!-- AI Genel Analiz – Yapay Zekâ Destekli Özet -->
-<div class="vd-section">
-  <div class="vd-grid vd-grid-2">
-    <section class="vd-card">
-      <div class="vd-card-header">
-        <h2 class="vd-card-title">AI Genel Değerlendirme</h2>
-      </div>
-      <div class="vd-card-body">
-        <p>{{ ai.summary }}</p>
-      </div>
-    </section>
-
-    <section class="vd-card">
-      <div class="vd-card-header">
-        <h3 class="vd-card-title">Öne Çıkan İçgörüler</h3>
-      </div>
-      <div class="vd-card-body">
-        <ul>
-          {% if ai.key_insights %}
-            {% for item in ai.key_insights %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          {% else %}
-            <li>Öne çıkan içgörü üretilemedi.</li>
-          {% endif %}
-        </ul>
-      </div>
-    </section>
-  </div>
-</div>
-
-<div class="vd-section">
-  <div class="vd-grid vd-grid-2">
-    <section class="vd-card">
-      <div class="vd-card-header">
-        <h3 class="vd-card-title">Riskler</h3>
-      </div>
-      <div class="vd-card-body">
-        <ul>
-          {% if ai.risks %}
-            {% for item in ai.risks %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          {% else %}
-            <li>Belirgin bir risk analizi üretilemedi veya veri kısıtlı.</li>
-          {% endif %}
-        </ul>
-      </div>
-    </section>
-
-    <section class="vd-card">
-      <div class="vd-card-header">
-        <h3 class="vd-card-title">Hızlı Kazanımlar</h3>
-      </div>
-      <div class="vd-card-body">
-        <ul>
-          {% if ai.quick_wins %}
-            {% for item in ai.quick_wins %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          {% else %}
-            <li>Kısa vadeli hızlı kazanım önerisi üretilemedi.</li>
-          {% endif %}
-        </ul>
-      </div>
-    </section>
-  </div>
-</div>
-
-<div class="vd-section">
-  <div class="vd-grid vd-grid-2">
-    <section class="vd-card">
-      <div class="vd-card-header">
-        <h3 class="vd-card-title">Önerilen Modeller</h3>
-      </div>
-      <div class="vd-card-body">
-        <ul>
-          {% if ai.ml_models %}
-            {% for item in ai.ml_models %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          {% else %}
-            <li>Makine öğrenmesi modeli önerisi bulunamadı.</li>
-          {% endif %}
-        </ul>
-      </div>
-    </section>
-
-    <section class="vd-card">
-      <div class="vd-card-header">
-        <h3 class="vd-card-title">Veri Stratejisi</h3>
-      </div>
-      <div class="vd-card-body">
-        <ul>
-          {% if ai.data_strategy %}
-            {% for item in ai.data_strategy %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          {% else %}
-            <li>Veri stratejisi için net aksiyon önerisi üretilemedi.</li>
-          {% endif %}
-        </ul>
-      </div>
-    </section>
-  </div>
-</div>
-
-<div class="vd-section">
-  <section class="vd-card">
-    <div class="vd-card-header">
-      <h3 class="vd-card-title">Yol Haritası</h3>
-    </div>
-    <div class="vd-card-body">
-      <ol>
-        <li>{{ ai.roadmap.phase_1 }}</li>
-        <li>{{ ai.roadmap.phase_2 }}</li>
-        <li>{{ ai.roadmap.phase_3 }}</li>
-      </ol>
-    </div>
-  </section>
-</div>
-{% endif %}
-
-
-<!-- Grafikler -->
-<div class="vd-section">
-  <h2 class="vd-section-title">Otomatik Üretilen Grafikler</h2>
-  {% if charts %}
-    <div class="vd-grid vd-grid-2">
-      {% for chart in charts %}
-      <div class="vd-card">
-        <div class="vd-card-header">
-          <h3 class="vd-card-title">{{ chart.title or "Grafik" }}</h3>
-        </div>
-        <div class="vd-card-body">
-          <img src="{{ chart.url }}" alt="{{ chart.title }}" class="vd-chart-image"/>
-          {% if chart.description %}
-            <p class="vd-text-muted" style="margin-top:8px;">{{ chart.description }}</p>
-          {% endif %}
-        </div>
-      </div>
-      {% endfor %}
-    </div>
-  {% else %}
-    <p>Bu veri seti için otomatik grafik üretilemedi.</p>
-  {% endif %}
-</div>
-
-<!-- Alt aksiyon barı -->
-<div class="vd-section">
   <div class="vd-card">
-    <div class="vd-card-body vd-flex vd-flex-between" style="align-items:center;">
-      <div>
-        <strong>Sonraki adım:</strong>
-        <span class="vd-text-muted">
-          Bu raporu PDF olarak indirip ekiplerle paylaşabilir veya yeni bir veri seti yükleyebilirsiniz.
-        </span>
+    <div class="vd-card-header">
+      <h3 class="vd-card-title">Riskler &amp; Dikkat Noktaları</h3>
+    </div>
+    <div class="vd-card-body">
+      {% if ai.risks %}
+      <ul class="vd-list">
+        {% for item in ai.risks %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="vd-text-muted">Risk listesi boş.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="vd-card">
+    <div class="vd-card-header">
+      <h3 class="vd-card-title">Önerilen Modeller</h3>
+    </div>
+    <div class="vd-card-body">
+      {% if ai.ml_models %}
+      <ul class="vd-list">
+        {% for item in ai.ml_models %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="vd-text-muted">Model önerisi yok.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ----- GRAFİKLER ----- #}
+{% if charts and charts|length > 0 %}
+<div class="vd-section" style="margin-top:24px;">
+  <h2 class="vd-section-title">Grafikler</h2>
+  <div class="vd-chart-grid">
+    {% for ch in charts %}
+    <div class="vd-card vd-chart-card">
+      <div class="vd-card-header">
+        <h3 class="vd-card-title">{{ ch.title }}</h3>
       </div>
-      <div style="display:flex;gap:8px;">
-        {% if upload_id %}
-        <a href="/download_pdf/{{ upload_id }}" class="vd-btn vd-btn-primary vd-btn-sm">
-          📄 PDF İndir
-        </a>
+      <div class="vd-card-body">
+        <img src="{{ ch.url }}" alt="{{ ch.title }}" class="vd-chart-img">
+        {% if ch.description %}
+        <p class="vd-text-muted" style="margin-top:6px;">{{ ch.description }}</p>
         {% endif %}
-        <a href="/upload" class="vd-btn vd-btn-ghost vd-btn-sm">
-          🔁 Yeni Veri Yükle
-        </a>
       </div>
     </div>
+    {% endfor %}
   </div>
 </div>
+{% endif %}
 
 {% endblock %}

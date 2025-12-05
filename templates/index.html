@@ -3,37 +3,28 @@
 
 {% block page_title %}Akıllı Veri Analiz Paneli{% endblock %}
 {% block page_subtitle %}
-CSV verinizi yükleyin, otomatik analiz sonuçlarını ve grafiklerini anında görün. Üyelik veya giriş gerektirmez.
+CSV veya Excel verinizi yükleyin, dakikalar içinde AI destekli veri analizi, grafikler ve PDF rapor alın. Üyelik gerekmez.
 {% endblock %}
 
 {% block content %}
 
-<div class="vd-grid vd-grid-2">
+<div class="vd-grid vd-grid-1">
   <div class="vd-card">
     <div class="vd-card-header">
       <h2 class="vd-card-title">Hemen Başla</h2>
     </div>
     <div class="vd-card-body">
       <p class="vd-text-muted">
-        Adınız, firma bilgileriniz ve CSV dosyanız ile analiz talebi oluşturun. Sonuçları ekran üzerinden inceleyin;
-        isterseniz daha sonra sizinle iletişime geçilebilir.
+        Adınız, firma bilgileriniz ve veri dosyanız ile analiz talebi oluşturun.
+        Sistem otomatik olarak veri kalite skorunu hesaplar, grafikler üretir ve PDF rapor hazırlar.
       </p>
+      <ul class="vd-list">
+        <li>✅ Veri kalite skoru ve eksik veri analizi</li>
+        <li>✅ Otomatik grafikler ve korelasyon analizi</li>
+        <li>✅ AI destekli özet, riskler ve aksiyon önerileri</li>
+      </ul>
       <a href="/upload" class="vd-btn vd-btn-primary vd-btn-sm" style="margin-top:8px;">
         📤 Veri Yükle ve Analiz Et
-      </a>
-    </div>
-  </div>
-
-  <div class="vd-card">
-    <div class="vd-card-header">
-      <h2 class="vd-card-title">Yönetici Girişi</h2>
-    </div>
-    <div class="vd-card-body">
-      <p class="vd-text-muted">
-        Tüm talepleri, yüklenen dosyaları ve analiz raporlarını görmek için yönetici paneline giriş yapın.
-      </p>
-      <a href="/admin/login" class="vd-btn vd-btn-ghost vd-btn-sm" style="margin-top:8px;">
-        🛡️ Yönetici Girişi
       </a>
     </div>
   </div>

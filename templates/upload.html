@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Veri Yükle – Veri Danışmanlığı{% endblock %}
 
-{% block page_title %}Veri Yükleme Formu{% endblock %}
+{% block page_title %}Veri Yükle{% endblock %}
 {% block page_subtitle %}
-Adınız, firma bilgileriniz ve CSV dosyanız ile analiz talebi oluşturun. Sonuçları ekranda görebilirsiniz, iletişim için bilgileriniz sadece yönetici tarafından kullanılacaktır.
+CSV veya Excel verinizi yükleyin; sistem otomatik olarak veri kalitesini analiz etsin, grafikler üretsin ve AI destekli rapor oluştursun.
 {% endblock %}
 
 {% block content %}
@@ -14,48 +14,53 @@ Adınız, firma bilgileriniz ve CSV dosyanız ile analiz talebi oluşturun. Sonu
 
       <div class="vd-grid vd-grid-2">
         <div class="vd-form-group">
-          <label for="full_name">Ad Soyad</label>
-          <input type="text" id="full_name" name="full_name" required placeholder="Adınız Soyadınız">
+          <label for="full_name">Ad Soyad<span class="vd-required">*</span></label>
+          <input type="text" id="full_name" name="full_name"
+                 value="{{ full_name or '' }}" required>
         </div>
 
         <div class="vd-form-group">
-          <label for="company_name">Firma</label>
-          <input type="text" id="company_name" name="company_name" required placeholder="Örn: ABC Makina A.Ş.">
-        </div>
-
-        <div class="vd-form-group">
-          <label for="phone">Cep Telefonu</label>
-          <input type="text" id="phone" name="phone" required placeholder="+90 ...">
-        </div>
-
-        <div class="vd-form-group">
-          <label for="email">E-posta</label>
-          <input type="email" id="email" name="email" required placeholder="ornek@firma.com">
-        </div>
-
-        <div class="vd-form-group">
-          <label for="sector">Sektör</label>
-          <input type="text" id="sector" name="sector" placeholder="Örn: Tekstil, Plastik, Gıda">
+          <label for="company_name">Firma Adı<span class="vd-required">*</span></label>
+          <input type="text" id="company_name" name="company_name"
+                 value="{{ company_name or '' }}" placeholder="Örn: Üretim A.Ş." required>
         </div>
       </div>
 
-      <div class="vd-form-group" style="margin-top:16px;">
-        <label for="file">CSV / Excel Dosyası</label>
+      <div class="vd-grid vd-grid-2">
+        <div class="vd-form-group">
+          <label for="email">E-posta<span class="vd-required">*</span></label>
+          <input type="email" id="email" name="email"
+                 value="{{ email or '' }}" required>
+        </div>
+
+        <div class="vd-form-group">
+          <label for="phone">Telefon<span class="vd-required">*</span></label>
+          <input type="text" id="phone" name="phone"
+                 value="{{ phone or '' }}" placeholder="+90 ...">
+        </div>
+      </div>
+
+      <div class="vd-form-group">
+        <label for="sector">Sektör / Alan (Opsiyonel)</label>
+        <input type="text" id="sector" name="sector"
+               value="{{ sector or '' }}" placeholder="Örn: Enerji, Lojistik, Üretim">
+      </div>
+
+      <div class="vd-form-group">
+        <label for="file">Veri Dosyası (CSV veya Excel)<span class="vd-required">*</span></label>
         <input type="file" id="file" name="file" accept=".csv,.xls,.xlsx" required>
-        <p class="vd-text-muted" style="margin-top:4px;">
-          İlk satırda kolon isimleri olmalıdır. Büyük veri setlerinde analiz birkaç saniye sürebilir.
-        </p>
+        <small class="vd-text-muted">Maksimum 20 MB, hassas kişisel veri içermemelidir.</small>
       </div>
 
       {% if error %}
-      <div class="vd-alert vd-alert-error">{{ error }}</div>
+      <div class="vd-alert vd-alert-error" style="margin-top:8px;">
+        {{ error }}
+      </div>
       {% endif %}
 
-      <div class="vd-form-actions">
-        <button type="submit" class="vd-btn vd-btn-primary">
-          📤 Veriyi Yükle ve Analiz Et
-        </button>
-      </div>
+      <button type="submit" class="vd-btn vd-btn-primary" style="margin-top:12px;">
+        📊 Yükle ve Analiz Et
+      </button>
     </form>
   </div>
 </div>
