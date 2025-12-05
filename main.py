@@ -1324,10 +1324,11 @@ def init_admin_user():
         admin = db.query(User).filter(User.is_admin == True).first()
         if admin:
             return  # zaten var
+
         admin = User(
             full_name="Sistem Admin",
-            email="admin@veridanismanligi.com",
-            password="Admin123!",   # Şimdilik düz şifre
+            email=ADMIN_DEFAULT_EMAIL,
+            password=ADMIN_DEFAULT_PASSWORD,   # .env’den geliyor
             phone=None,
             company="Veri Danışmanlığı",
             sector=None,
@@ -1335,9 +1336,13 @@ def init_admin_user():
         )
         db.add(admin)
         db.commit()
-        print("✅ Varsayılan admin oluşturuldu (Railway veya lokal): admin@veridanismanligi.com / Admin123!")
+        print(
+            "✅ Varsayılan admin oluşturuldu: "
+            f"{ADMIN_DEFAULT_EMAIL} / (şifre .env'den okunuyor)"
+        )
     finally:
         db.close()
+
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
