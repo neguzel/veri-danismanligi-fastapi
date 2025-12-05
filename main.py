@@ -2,6 +2,7 @@ import os
 import io
 import json
 import re
+import bcrypt
 import textwrap
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -1318,17 +1319,26 @@ def generate_pdf_report(
 
 # --- Admin kullanıcısını otomatik oluşturma ---
 
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    try:
+        return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+    except:
+        return False
+
 def init_admin_user():
     db = SessionLocal()
     try:
-        admin = db.query(User).filter(User.is_admin == True).first()
-        if admin:
-            return  # zaten var
+        existing = db.query(User).filter(User.is_admin == True).first()
+        if existing:
+            return  # Admin zaten var
 
         admin = User(
             full_name="Sistem Admin",
             email=ADMIN_DEFAULT_EMAIL,
-            password=ADMIN_DEFAULT_PASSWORD,   # .env’den geliyor
+            password=hash_password(ADMIN_DEFAULT_PASSWORD),  # HASHLENMİŞ ŞİFRE
             phone=None,
             company="Veri Danışmanlığı",
             sector=None,
@@ -1336,12 +1346,10 @@ def init_admin_user():
         )
         db.add(admin)
         db.commit()
-        print(
-            "✅ Varsayılan admin oluşturuldu: "
-            f"{ADMIN_DEFAULT_EMAIL} / (şifre .env'den okunuyor)"
-        )
+        print("✅ Admin kullanıcısı oluşturuldu.")
     finally:
         db.close()
+
 
 @app.on_event("startup")
 def on_startup():
@@ -1376,20 +1384,17 @@ def admin_login_post(
     password: str = Form(...),
     db: OrmSession = Depends(get_db),
 ):
-    user = (
-        db.query(User)
-        .filter(
-            User.email == email,
-            User.password == password,
-            User.is_admin == True,
-        )
-        .first()
+    user = db.query(User).filter(
+    User.email == email,
+    User.is_admin == True
+).first()
+
+if not user or not verify_password(password, user.password):
+    return templates.TemplateResponse(
+        "admin_login.html",
+        {"request": request, "error": "Geçersiz yönetici bilgileri."},
     )
-    if not user:
-        return templates.TemplateResponse(
-            "admin_login.html",
-            {"request": request, "error": "Geçersiz yönetici bilgileri."},
-        )
+
 
     request.session["user_id"] = user.id
     return RedirectResponse(url="/admin/global", status_code=302)
