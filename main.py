@@ -55,7 +55,7 @@ from openai import OpenAI
 load_dotenv()
 
 ADMIN_DEFAULT_EMAIL = os.getenv("ADMIN_EMAIL", "admin@veridanismanligi.com")
-ADMIN_DEFAULT_PASSWORD = os.getenv("ADMIN_PASSWORD", "VeriAdmin!2025")
+ADMIN_DEFAULT_PASSWORD = os.getenv("ADMIN_PASSWORD", "YzA!2025veriPanel*")
 
 OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or "").strip()
 client: Optional[OpenAI] = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
