@@ -8,6 +8,17 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 import pytz
 
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+
 turkey_tz = pytz.timezone("Europe/Istanbul")
 timestamp = datetime.now(turkey_tz).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -1331,14 +1342,14 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def init_admin_user():
     db = SessionLocal()
     try:
-        existing = db.query(User).filter(User.is_admin == True).first()
-        if existing:
-            return  # Admin zaten var
+        admin = db.query(User).filter(User.is_admin == True).first()
+        if admin:
+            return
 
         admin = User(
             full_name="Sistem Admin",
             email=ADMIN_DEFAULT_EMAIL,
-            password=hash_password(ADMIN_DEFAULT_PASSWORD),  # HASHLENMİŞ ŞİFRE
+            password=hash_password(ADMIN_DEFAULT_PASSWORD),
             phone=None,
             company="Veri Danışmanlığı",
             sector=None,
@@ -1346,7 +1357,7 @@ def init_admin_user():
         )
         db.add(admin)
         db.commit()
-        print("✅ Admin kullanıcısı oluşturuldu.")
+        print("✅ Admin oluşturuldu.")
     finally:
         db.close()
 
@@ -1384,20 +1395,26 @@ def admin_login_post(
     password: str = Form(...),
     db: OrmSession = Depends(get_db),
 ):
-    user = db.query(User).filter(
-    User.email == email,
-    User.is_admin == True
-).first()
+    user = db.query(User).filter(User.email == email).first()
 
-if not user or not verify_password(password, user.password):
-    return templates.TemplateResponse(
-        "admin_login.html",
-        {"request": request, "error": "Geçersiz yönetici bilgileri."},
-    )
+    # kullanıcı yoksa veya admin değilse
+    if not user or not user.is_admin:
+        return templates.TemplateResponse(
+            "admin_login.html",
+            {"request": request, "error": "Geçersiz yönetici bilgileri."},
+        )
 
+    # Şifre doğrulama
+    if not verify_password(password, user.password):
+        return templates.TemplateResponse(
+            "admin_login.html",
+            {"request": request, "error": "Geçersiz yönetici bilgileri."},
+        )
 
+    # Başarılı login
     request.session["user_id"] = user.id
     return RedirectResponse(url="/admin/global", status_code=302)
+
 
 
 @app.get("/logout")
