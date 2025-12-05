@@ -1114,7 +1114,8 @@ def generate_pdf_report(
         c.drawString(margin, height - 1.3 * cm, title)
 
         c.setFont(PDF_FONT, 8)
-        created_text = f"Oluşturulma: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} (UTC)"
+        turkey_tz = pytz.timezone("Europe/Istanbul")
+        created_text = f"Oluşturulma: {datetime.now(turkey_tz).strftime('%Y-%m-%d %H:%M:%S')} (TR)"
         c.drawRightString(width - margin, height - 1.1 * cm, created_text)
 
         c.setFillColor(colors.black)
@@ -1166,7 +1167,8 @@ def generate_pdf_report(
     c.drawString(margin, height - 1.4 * cm, "Veri Analiz Raporu")
 
     c.setFont(PDF_FONT, 9)
-    created_text = f"Oluşturulma: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} (UTC)"
+    turkey_tz = pytz.timezone("Europe/Istanbul")
+    created_text = f"Oluşturulma: {datetime.now(turkey_tz).strftime('%Y-%m-%d %H:%M:%S')} (TR)"
     c.drawRightString(width - margin, height - 1.2 * cm, created_text)
 
     c.setFillColor(colors.black)
