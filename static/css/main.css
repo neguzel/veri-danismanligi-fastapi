@@ -354,24 +354,26 @@ body {
 
 /* Grafik kartlarını küçültme / düzenleme */
 
+/* Grafik grid yapısı */
 .vd-chart-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 1rem;
-  align-items: flex-start;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  margin-top: 8px;
 }
 
-.vd-card-chart {
-  padding: 0.75rem;
+/* Grafik kartı */
+.vd-chart-card {
+  overflow: hidden;
 }
 
+/* Grafik görseli */
 .vd-chart-img {
   width: 100%;
-  max-height: 240px;   /* İstersen 200 veya 180 yaparak daha da küçültebilirsin */
-  object-fit: contain; /* Taşmadan sığsın */
+  max-height: 350px;  /* 300–400 arası oynayabilirsin */
+  object-fit: contain;
+  border-radius: 8px;
   display: block;
-  margin: 0 auto;
-  border-radius: 0.5rem;
 }
 
 
