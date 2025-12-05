@@ -5,6 +5,10 @@ import re
 import textwrap
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+import pytz
+
+turkey_tz = pytz.timezone("Europe/Istanbul")
+timestamp = datetime.now(turkey_tz).strftime("%Y-%m-%d %H:%M:%S")
 
 import matplotlib
 matplotlib.use("Agg")
