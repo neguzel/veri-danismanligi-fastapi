@@ -54,8 +54,12 @@ from openai import OpenAI
 
 load_dotenv()
 
+ADMIN_DEFAULT_EMAIL = os.getenv("ADMIN_EMAIL", "admin@veridanismanligi.com")
+ADMIN_DEFAULT_PASSWORD = os.getenv("ADMIN_PASSWORD", "VeriAdmin!2025")
+
 OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or "").strip()
 client: Optional[OpenAI] = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
