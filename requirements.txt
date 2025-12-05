@@ -10,5 +10,7 @@ openai
 reportlab
 matplotlib
 itsdangerous
+pytz
+
 
 
